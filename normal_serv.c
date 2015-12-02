@@ -130,9 +130,6 @@ int main()
     /* Get the cipher - opt */
 
     printf("SSL connection using %s\n", SSL_get_cipher(ssl));
-
-    /* Get client's certificate (note: beware of dynamic allocation) - opt */
-
     /* DATA EXCHANGE - Receive message and send reply. */
 
     err = SSL_read(ssl, buf, sizeof(buf) - 1);

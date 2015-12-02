@@ -59,14 +59,14 @@ struct shm_ctx_t {
 int init_shm(struct shm_ctx_t *shm_ctx)
 {
     // create & initialize existing semaphore
-    shm_ctx->down = sem_open(DOWN_SEM, 0, 0644, 0);
+    shm_ctx->down = sem_open(DOWN_SEM, O_CREAT, 0644, 0);
     if (shm_ctx->down == SEM_FAILED) {
         perror("socket:unable to execute semaphore");
         sem_close(shm_ctx->down);
         return -1;
     }
 
-    shm_ctx->up = sem_open(UP_SEM, 0, 0644, 0);
+    shm_ctx->up = sem_open(UP_SEM, O_CREAT, 0644, 0);
     if (shm_ctx->up == SEM_FAILED) {
         perror("unable to create semaphore");
         sem_unlink(UP_SEM);
@@ -74,7 +74,7 @@ int init_shm(struct shm_ctx_t *shm_ctx)
     }
 
     // create the shared memory segment with this key
-    shm_ctx->shmid = shmget(key, SHMSZ, 0666);
+    shm_ctx->shmid = shmget(key, SHMSZ, IPC_CREAT | 0666);
     if (shm_ctx->shmid < 0) {
         perror("socket:failure in shmget");
         return -1;
@@ -163,20 +163,20 @@ int main()
     SSL_set_connect_state(ssl);
 
     SSL_do_handshake(ssl);  // This will write the hello message to the out_bio
-    send_down(out_bio, &shm_ctx);
-    receive_up(in_bio, &shm_ctx);
 
     while (!SSL_is_init_finished(ssl)) {
+        send_down(out_bio, &shm_ctx);
+        receive_up(in_bio, &shm_ctx);
         int r = SSL_do_handshake(ssl);
         if (r < 0) {
             switch (SSL_get_error(ssl, r)) {
             case SSL_ERROR_WANT_READ:
                 printf("want to read more data!\n");
-                receive_up(in_bio, &shm_ctx);
+                /*receive_up(in_bio, &shm_ctx);*/
                 break;
             case SSL_ERROR_WANT_WRITE:
                 printf("want to write more data!\n");
-                send_down(out_bio, &shm_ctx);
+                /*send_down(out_bio, &shm_ctx);*/
                 break;
             }
         } else {
