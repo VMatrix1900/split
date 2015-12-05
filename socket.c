@@ -89,7 +89,7 @@ int main(void)
         // recv
         size_t read = (size_t) recv(sd, shm_ctx.shm + sizeof(size_t), BUFSZ, 0);
         printf("receive the msg from the server, the size is %zu\n", read);
-        memcpy(&(shm_ctx.shm), &read, sizeof(size_t));
+        memcpy(shm_ctx.shm, &read, sizeof(size_t));
         sem_post(shm_ctx.up);
     }
 
