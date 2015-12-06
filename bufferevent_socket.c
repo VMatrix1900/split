@@ -14,7 +14,7 @@
 
 // name and the size of the shared memory segment.
 key_t key = 1000;
-#define SHMSZ 8192
+#define SHMSZ 4096
 #define BUFSZ 4096
 
 // names of 2 semophores.

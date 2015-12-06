@@ -10,6 +10,9 @@ client: cli.c
 socket: socket.c
 	gcc -Wall -g -o socket socket.c -levent -lpthread
 
+bufsocket: bufferevent_socket.c
+	gcc -Wall -g -o bufsocket bufferevent_socket.c -levent -lpthread
+
 mem: bio_mem.c
 	gcc -Wall -g -o mem bio_mem.c -lssl -lcrypto -lpthread
 
