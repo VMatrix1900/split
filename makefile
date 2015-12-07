@@ -1,28 +1,28 @@
 tcp: tcp_server.c
 	gcc -Wall -g -o tcp tcp_server.c -levent
 
-server: normal_serv.c
+normal_server: normal_serv.c
 	gcc -Wall -g -o normal_serv normal_serv.c -lssl -lcrypto
+
+server: serv.c
+	gcc -Wall -g -o serv serv.c -lssl -lcrypto -lpthread
 
 client: cli.c
 	gcc -Wall -g -o cli cli.c -lssl -lcrypto -lpthread
 
-socket: socket.c
-	gcc -Wall -g -o socket socket.c -levent -lpthread
+serv_socket: serv_socket.c
+	gcc -Wall -g -o serv_socket serv_socket.c -levent -lpthread
 
-bufsocket: bufferevent_socket.c
-	gcc -Wall -g -o bufsocket bufferevent_socket.c -levent -lpthread
+cli_socket: cli_socket.c
+	gcc -Wall -g -o cli_socket cli_socket.c -levent -lpthread
+
+socket: serv_socket cli_socket
 
 mem: bio_mem.c
 	gcc -Wall -g -o mem bio_mem.c -lssl -lcrypto -lpthread
 
 run_mem: mem
 	./mem
-
-seperate: client server socket
-	./normal_serv &
-	./cli &
-	./socket
 
 test_sem: test_sem.c test_sem_cli.c
 	gcc -o sem_server test_sem.c -lpthread
@@ -31,10 +31,13 @@ test_sem: test_sem.c test_sem_cli.c
 	./sem_client
 
 run_server: server
-	./normal_serv
+	./serv
 
 run_client: client
 	./cli
 
-run_socket: socket
-	./socket
+run_cli_socket: socket
+	./cli_socket
+
+run_serv_socket: socket
+	./serv_socket

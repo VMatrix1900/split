@@ -1,4 +1,5 @@
 #include <event2/event.h>
+#include <event2/listener.h>
 #include <event2/bufferevent.h>
 #include <sys/socket.h>
 #include <string.h>
@@ -13,13 +14,13 @@
 #include <fcntl.h>
 
 //name and the size of the shared memory segment.
-key_t key= 1000;
+key_t key= 1001;
 #define SHMSZ 4096
 #define BUFSZ 4096
 
 // names of 2 semophores.
-char UP_SEM[]= "up";
-char DOWN_SEM[]= "down";
+char UP_SEM[]= "up_server";
+char DOWN_SEM[]= "down_server";
 
 // store the info about the semophores and shared memory.
 struct shm_ctx_t {
@@ -32,7 +33,8 @@ struct shm_ctx_t {
     struct timeval *msec;
 };
 
-void copydata(evutil_socket_t fd, short what, void* ptr){
+void
+copydata(evutil_socket_t fd, short what, void* ptr){
     struct shm_ctx_t *ctx = (struct shm_ctx_t *) ptr;
     event_del(ctx->timer);
     if(!sem_trywait(ctx->down)){
@@ -42,7 +44,8 @@ void copydata(evutil_socket_t fd, short what, void* ptr){
     event_add(ctx->timer, ctx->msec);
 }
 
-void readcb(struct bufferevent *bev, void *ptr) {
+void
+readcb(struct bufferevent *bev, void *ptr) {
     struct shm_ctx_t *ctx = (struct shm_ctx_t *) ptr;
     printf("begin reading data:\n");
     // when packet arrived, just copy it from input buffer to shared memory.
@@ -61,23 +64,38 @@ void readcb(struct bufferevent *bev, void *ptr) {
     evtimer_add(ctx->timer, ctx->msec);
 }
 
-void writecb(struct bufferevent *bev, void *ptr) {
+void
+writecb(struct bufferevent *bev, void *ptr) {
     struct shm_ctx_t *ctx = (struct shm_ctx_t *) ptr;
     printf("packet send to underlying port\n");
     printf("The msg size: %zu\n", *((size_t *)(ctx->shm)));
 }
 
-void eventcb(struct bufferevent *bev, short events, void *ptr){
+void
+eventcb(struct bufferevent *bev, short events, void *ptr){
     struct shm_ctx_t *ctx = (struct shm_ctx_t *) ptr;
-    if (events & BEV_EVENT_CONNECTED) {
-        printf("socket: connected\n");
-        /* We're connected to 127.0.0.1:8443. we can start send hello msg */
-        sem_wait(ctx->down);
-        printf("begin sending the hello msg to server\n");
-        bufferevent_write(bev, ctx->shm + sizeof(size_t), *((size_t *)(ctx->shm)));
-    } else if (events & BEV_EVENT_ERROR) {
-         /* An error occured while connecting. */
+    if (events & BEV_EVENT_ERROR) {
+        perror("error from server buffer event");
     }
+    if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+        bufferevent_free(bev);
+    }
+}
+
+void
+accept_conn_cb(struct evconnlistener *listener,
+        evutil_socket_t fd, struct sockaddr *address, int socklen,
+        void *ptr)
+{
+    struct shm_ctx_t *ctx = (struct shm_ctx_t *) ptr;
+    /* We got a new connection! Set up a bufferevent for it. */
+    struct event_base *base = evconnlistener_get_base(listener);
+    ctx->bev = bufferevent_socket_new(
+            base, fd, BEV_OPT_CLOSE_ON_FREE);
+
+    bufferevent_setcb(ctx->bev, readcb, writecb, eventcb, ctx);
+
+    bufferevent_enable(ctx->bev, EV_READ|EV_WRITE);
 }
 
 int main(void)
@@ -116,27 +134,24 @@ int main(void)
     shm_ctx.shm = shmat(shm_ctx.shmid,NULL,0);
 
     struct event_base *base;
+    struct evconnlistener *listener;
     struct sockaddr_in sin;
 
     base = event_base_new();
 
     memset(&sin, 0, sizeof(sin));
     sin.sin_family = AF_INET;
-    sin.sin_addr.s_addr = htonl(0x7f000001); /* 127.0.0.1 */
-    sin.sin_port = htons(8453); /* Port 8080 */
+    sin.sin_addr.s_addr = INADDR_ANY;
+    sin.sin_port = htons(8453); /* Port 8453 */
 
-    shm_ctx.bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
-
-    bufferevent_setcb(shm_ctx.bev, readcb, writecb, eventcb, &shm_ctx);
-
-    if (bufferevent_socket_connect(shm_ctx.bev,
-        (struct sockaddr *)&sin, sizeof(sin)) < 0) {
-        /* Error starting connection */
-        bufferevent_free(shm_ctx.bev);
-        return -1;
+    // TCP connection listener.
+    listener = evconnlistener_new_bind(base, accept_conn_cb, &shm_ctx,
+            LEV_OPT_CLOSE_ON_FREE|LEV_OPT_REUSEABLE, -1,
+            (struct sockaddr*)&sin, sizeof(sin));
+    if (!listener) {
+        perror("Couldn't create listener");
+        return 1;
     }
-
-    bufferevent_enable(shm_ctx.bev, EV_READ|EV_WRITE);
 
     shm_ctx.timer = evtimer_new(base, copydata, &shm_ctx);
 
