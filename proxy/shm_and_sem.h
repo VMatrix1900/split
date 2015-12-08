@@ -1,4 +1,4 @@
-
+#include <semaphore.h>
 //name and the size of the shared memory segment.
 key_t client_key = 1001;
 key_t server_key = 1000;
@@ -24,6 +24,7 @@ struct shm_ctx_t {
 };
 
 int init_shm(struct shm_ctx_t * shm_ctx, char name[]){
+    key_t key;
     shm_ctx->down = sem_open(strcat(DOWN_SEM, name), O_CREAT, 0644,0);
     if(shm_ctx->down == SEM_FAILED)
     {
@@ -41,9 +42,9 @@ int init_shm(struct shm_ctx_t * shm_ctx, char name[]){
     }
 
     if (strcmp(name, "client")){
-         key_t key = client_key;
+        key = client_key;
     } else if(strcmp(name, "server")){
-        key_t key = server_key;
+        key = server_key;
     } else {
         perror("wrong arguments for init_shm");
         return -1;

@@ -59,7 +59,6 @@ writecb(struct bufferevent *bev, void *ptr) {
 
 void
 serv_eventcb(struct bufferevent *bev, short events, void *ptr){
-    struct shm_ctx_t *ctx = (struct shm_ctx_t *) ptr;
     if (events & BEV_EVENT_ERROR) {
         perror("error from server buffer event");
     }
@@ -87,19 +86,19 @@ accept_conn_cb(struct evconnlistener *listener,
         void *ptr)
 {
     // setup the proxy struct;
-    struct proxy_ctx_t *ctx = malloc(sizeof(proxy_ctx_t));
-    ctx->cli_shm_ctx = malloc(sizeof(shm_ctx_t));// act as a client, receive msg from the server
-    ctx->serv_shm_ctx = malloc(sizeof(shm_ctx_t));// act as a server, receive msg from the client
+    struct proxy_ctx_t *ctx = malloc(sizeof(struct proxy_ctx_t));
+    ctx->cli_shm_ctx = malloc(sizeof(struct shm_ctx_t));// act as a client, receive msg from the server
+    ctx->serv_shm_ctx = malloc(sizeof(struct shm_ctx_t));// act as a server, receive msg from the client
 
     init_shm(ctx->cli_shm_ctx, "client");
     init_shm(ctx->serv_shm_ctx, "server");
 
     /* get the real socket. using the nat table. */
     ctx->af = peeraddr->sa_family;
-    ctx->addrlen = sizeof(struct sockaddr_storage);
+    ctx->dstsocklen = sizeof(struct sockaddr_storage);
     if (natlookup((struct sockaddr *)&ctx->dstsock, &ctx->dstsocklen,
                 fd, peeraddr, peeraddrlen) == -1) {
-        log_err_printf("Connection not found in NAT "
+        printf("Connection not found in NAT "
                 "state table, aborting connection\n");
         evutil_closesocket(fd);
         proxy_ctx_free(ctx);
@@ -119,13 +118,13 @@ accept_conn_cb(struct evconnlistener *listener,
     // then we setup client side socket.
     ctx->cli_shm_ctx->bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 
-    bufferevent_setcb(ctx->cli_shm_ctx.bev, readcb, writecb, cli_eventcb, ctx->cli_shm_ctx);
+    bufferevent_setcb(ctx->cli_shm_ctx->bev, readcb, writecb, cli_eventcb, ctx->cli_shm_ctx);
 
-    if (bufferevent_socket_connect(ctx->cli_shm_ctx.bev,
+    if (bufferevent_socket_connect(ctx->cli_shm_ctx->bev,
                 (struct sockaddr *)&ctx->dstsock, ctx->dstsocklen) < 0) {
         /* Error starting connection */
         bufferevent_free(ctx->cli_shm_ctx->bev);
-        return -1;
+        return;
     }
 
     bufferevent_enable(ctx->cli_shm_ctx->bev, EV_READ|EV_WRITE);
