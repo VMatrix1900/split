@@ -1,0 +1,84 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.9~svn20110310	//
+BUFSZ	shm_and_sem.h	6;"	d
+DOWN_SEM	shm_and_sem.h	/^char DOWN_SEM[]= "down";$/;"	v
+NAT_H	nat.h	30;"	d
+PRIVATE	nat.c	47;"	d	file:
+PRIVATE	nat.c	51;"	d	file:
+SHMSZ	shm_and_sem.h	5;"	d
+UP_SEM	shm_and_sem.h	/^char UP_SEM[]= "up";$/;"	v
+accept_conn_cb	TCP_layer.c	/^accept_conn_cb(struct evconnlistener *listener,$/;"	f
+af	proxy.h	/^    int af;$/;"	m	struct:proxy_ctx
+bev	shm_and_sem.h	/^    struct bufferevent *bev;$/;"	m	struct:shm_ctx_t	typeref:struct:shm_ctx_t::bufferevent
+cli_eventcb	TCP_layer.c	/^cli_eventcb(struct bufferevent *bev, short events, void *ptr){$/;"	f
+cli_shm_ctx	proxy.h	/^    struct shm_ctx_t *cli_shm_ctx;$/;"	m	struct:proxy_ctx	typeref:struct:proxy_ctx::shm_ctx_t
+client_key	shm_and_sem.h	/^key_t client_key = 1001;$/;"	v
+copydata	TCP_layer.c	/^copydata(evutil_socket_t fd, short what, void* ptr){$/;"	f
+down	shm_and_sem.h	/^    sem_t *down;$/;"	m	struct:shm_ctx_t
+dport	nat.c	126;"	d	file:
+dport	nat.c	198;"	d	file:
+dstsock	proxy.h	/^    struct sockaddr_storage dstsock;$/;"	m	struct:proxy_ctx	typeref:struct:proxy_ctx::sockaddr_storage
+dstsocklen	proxy.h	/^    socklen_t dstsocklen;$/;"	m	struct:proxy_ctx
+engine	nat.c	/^struct engine {$/;"	s	file:
+engines	nat.c	/^struct engine engines[] = {$/;"	v	typeref:struct:engine
+finicb	nat.c	/^	nat_fini_cb_t finicb;$/;"	m	struct:engine	file:
+init_shm	shm_and_sem.h	/^int init_shm(struct shm_ctx_t * shm_ctx, char name[]){$/;"	f
+initcb	nat.c	/^	nat_init_cb_t initcb;$/;"	m	struct:engine	file:
+ipv6	nat.c	/^	unsigned int ipv6 : 1;$/;"	m	struct:engine	file:
+lookupcb	nat.c	/^	nat_lookup_cb_t lookupcb;$/;"	m	struct:engine	file:
+main	TCP_layer.c	/^int main(void)$/;"	f
+msec	shm_and_sem.h	/^struct timeval msec = {0, 100};$/;"	v	typeref:struct:timeval
+name	nat.c	/^	const char *name;$/;"	m	struct:engine	file:
+nat_exist	nat.c	/^nat_exist(const char *name)$/;"	f
+nat_fini	nat.c	/^nat_fini(void)$/;"	f
+nat_fini_cb_t	nat.c	/^typedef void (*nat_fini_cb_t)(void);$/;"	t	file:
+nat_getdefaultname	nat.c	/^nat_getdefaultname(void)$/;"	f
+nat_getlookupcb	nat.c	/^nat_getlookupcb(const char *name)$/;"	f
+nat_getsocketcb	nat.c	/^nat_getsocketcb(const char *name)$/;"	f
+nat_getsockname_lookup_cb	nat.c	/^nat_getsockname_lookup_cb(struct sockaddr *dst_addr, socklen_t *dst_addrlen,$/;"	f	file:
+nat_index	nat.c	/^nat_index(const char *name)$/;"	f	file:
+nat_init	nat.c	/^nat_init(void)$/;"	f
+nat_init_cb_t	nat.c	/^typedef int (*nat_init_cb_t)(void);$/;"	t	file:
+nat_ipfilter_fd	nat.c	/^static int nat_ipfilter_fd = -1;$/;"	v	file:
+nat_ipfilter_fini	nat.c	/^nat_ipfilter_fini(void)$/;"	f	file:
+nat_ipfilter_init	nat.c	/^nat_ipfilter_init(void)$/;"	f	file:
+nat_ipfilter_lookup_cb	nat.c	/^nat_ipfilter_lookup_cb(struct sockaddr *dst_addr, socklen_t *dst_addrlen,$/;"	f	file:
+nat_ipfilter_preinit	nat.c	/^nat_ipfilter_preinit(void)$/;"	f	file:
+nat_iptransparent_socket_cb	nat.c	/^nat_iptransparent_socket_cb(evutil_socket_t s)$/;"	f	file:
+nat_ipv6ready	nat.c	/^nat_ipv6ready(const char *name)$/;"	f
+nat_list_engines	nat.c	/^nat_list_engines(void)$/;"	f
+nat_lookup_cb_t	nat.h	/^typedef int (*nat_lookup_cb_t)(struct sockaddr *, socklen_t *, evutil_socket_t,$/;"	t
+nat_netfilter_lookup_cb	nat.c	/^nat_netfilter_lookup_cb(struct sockaddr *dst_addr, socklen_t *dst_addrlen,$/;"	f	file:
+nat_pf_fd	nat.c	/^static int nat_pf_fd = -1;$/;"	v	file:
+nat_pf_fini	nat.c	/^nat_pf_fini(void)$/;"	f	file:
+nat_pf_init	nat.c	/^nat_pf_init(void)$/;"	f	file:
+nat_pf_lookup_cb	nat.c	/^nat_pf_lookup_cb(struct sockaddr *dst_addr, socklen_t *dst_addrlen,$/;"	f	file:
+nat_pf_preinit	nat.c	/^nat_pf_preinit(void)$/;"	f	file:
+nat_preinit	nat.c	/^nat_preinit(void)$/;"	f
+nat_socket_cb_t	nat.h	/^typedef int (*nat_socket_cb_t)(evutil_socket_t);$/;"	t
+nat_used	nat.c	/^nat_used(const char *name)$/;"	f
+nat_version	nat.c	/^nat_version(void)$/;"	f
+natlookup	TCP_layer.c	/^nat_lookup_cb_t natlookup;$/;"	v
+preinitcb	nat.c	/^	nat_init_cb_t preinitcb;$/;"	m	struct:engine	file:
+proxy_ctx	proxy.h	/^struct proxy_ctx{$/;"	s
+proxy_ctx_free	proxy.h	/^proxy_ctx_free(proxy_ctx * ctx){$/;"	f
+rdport	nat.c	127;"	d	file:
+rdport	nat.c	199;"	d	file:
+readcb	TCP_layer.c	/^readcb(struct bufferevent *bev, void *ptr) {$/;"	f
+serv_eventcb	TCP_layer.c	/^serv_eventcb(struct bufferevent *bev, short events, void *ptr){$/;"	f
+serv_shm_ctx	proxy.h	/^    struct shm_ctx_t *serv_shm_ctx;$/;"	m	struct:proxy_ctx	typeref:struct:proxy_ctx::shm_ctx_t
+server_key	shm_and_sem.h	/^key_t server_key = 1000;$/;"	v
+shm	shm_and_sem.h	/^    char *shm;$/;"	m	struct:shm_ctx_t
+shm_ctx_t	shm_and_sem.h	/^struct shm_ctx_t {$/;"	s
+shmid	shm_and_sem.h	/^    int shmid;$/;"	m	struct:shm_ctx_t
+socketcb	nat.c	/^	nat_socket_cb_t socketcb;$/;"	m	struct:engine	file:
+sport	nat.c	125;"	d	file:
+sport	nat.c	197;"	d	file:
+timer	shm_and_sem.h	/^    struct event *timer;$/;"	m	struct:shm_ctx_t	typeref:struct:shm_ctx_t::event
+up	shm_and_sem.h	/^    sem_t *up;$/;"	m	struct:shm_ctx_t
+used	nat.c	/^	unsigned int used : 1;$/;"	m	struct:engine	file:
+writecb	TCP_layer.c	/^writecb(struct bufferevent *bev, void *ptr) {$/;"	f

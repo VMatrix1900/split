@@ -17,8 +17,10 @@ struct shm_ctx_t {
     sem_t *up;
     int shmid;
     char *shm;
+#ifdef TCP
     struct bufferevent *bev;
     struct event *timer;
+#endif
 };
 
 int init_shm(struct shm_ctx_t *shm_ctx, char name[])
@@ -37,6 +39,15 @@ int init_shm(struct shm_ctx_t *shm_ctx, char name[])
         return -1;
     }
 
+    if (strcmp(name, "client")) {
+        key_t key = client_key;
+    } else if (strcmp(name, "server")) {
+        key_t key = server_key;
+    } else {
+        perror("wrong arguments for init_shm");
+        return -1;
+    }
+
     // create the shared memory segment with this key
     shm_ctx->shmid = shmget(key, SHMSZ, IPC_CREAT | 0666);
     if (shm_ctx->shmid < 0) {
@@ -46,4 +57,5 @@ int init_shm(struct shm_ctx_t *shm_ctx, char name[])
 
     // attach this segment to virtual memory
     shm_ctx->shm = shmat(shm_ctx->shmid, NULL, 0);
+    return 0;
 }
