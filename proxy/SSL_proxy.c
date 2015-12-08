@@ -2,8 +2,12 @@
 // client part do handshake with real server. just send down msg and receive up
 // msg.
 // server part use fake certificate to do handshake with real client.
-
-#include "ssl.h"
+#include <fcntl.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include "channel.h"
 
 #define CHK_NULL(x) \
     if ((x) == NULL) exit(1)
@@ -83,18 +87,18 @@ int main()
 {
     int err;
     char buf[4096];
-    struct ssl_channel *client = malloc(sizeof(ssl_channel));
-    struct ssl_channel *server = malloc(sizeof(ssl_channel));
-    client->shm = malloc(sizeof(shm_ctx_t));
-    server->shm = malloc(sizeof(shm_ctx_t));
-    init_shm(client_shm, "client");
-    init_shm(server_shm, "server");
+    struct ssl_channel *client = malloc(sizeof(struct ssl_channel));
+    struct ssl_channel *server = malloc(sizeof(struct ssl_channel));
+    client->shm = malloc(sizeof(struct shm_ctx_t));
+    server->shm = malloc(sizeof(struct shm_ctx_t));
+    init_shm(client->shm, "client");
+    init_shm(server->shm, "server");
 
     SSL_CTX *ctx;
     SSL_METHOD *meth;
 
     SSL_library_init();
-    OpenSSL_add_server->ssl_algorithms();
+    OpenSSL_add_ssl_algorithms();
     SSL_load_error_strings();
     ERR_load_BIO_strings();
 
@@ -106,7 +110,7 @@ int main()
     CHK_NULL(client->ssl);
 
     init_ssl_bio(client->ssl);
-    SSL_set_connect_state(ssl);
+    SSL_set_connect_state(client->ssl);
     // since SSL_new is copy ctx object to ssl object. so we can reuse the ctx
     // obj.
 
@@ -172,20 +176,32 @@ int main()
 
     /* --------------------------------------------------- */
     /* DATA EXCHANGE - Receive message and send reply. */
+    /*assume the client send, server response mode*/
+    while (1) {
+        receive_up(server);
+        err = SSL_read(server->ssl, buf + sizeof(int), sizeof(buf) - 1);
+        CHK_SSL(err);
+        memcpy(buf, &err, sizeof(int));
 
-    receive_up(server->ssl, &shm_ctx);
-    err = SSL_read(server->ssl, buf, sizeof(buf) - 1);
-    CHK_SSL(err);
-    buf[err] = '\0';
-    printf("Got %d chars:'%s'\n", err, buf);
+        err = SSL_write(client->ssl, buf + sizeof(int), *((int *)buf));
+        CHK_SSL(err);
 
-    err = SSL_write(server->ssl, "I hear you.", strlen("I hear you."));
-    CHK_SSL(err);
+        send_down(client);
 
-    send_down(server->ssl, &shm_ctx);
+        receive_up(client);
+        err = SSL_read(client->ssl, buf + sizeof(int), sizeof(buf) - 1);
+        CHK_SSL(err);
+        memcpy(buf, &err, sizeof(int));
+
+        err = SSL_write(server->ssl, buf + sizeof(int), *((int *)buf));
+        CHK_SSL(err);
+
+        send_down(server);
+    }
     /* Clean up. */
 
     SSL_free(server->ssl);
+    SSL_free(client->ssl);
     SSL_CTX_free(ctx);
     return 0;
 }

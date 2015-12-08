@@ -1,3 +1,4 @@
+#include <stdlib.h>
 struct proxy_ctx_t {
     struct sockaddr_storage dstsock;
     socklen_t dstsocklen;
@@ -6,7 +7,7 @@ struct proxy_ctx_t {
     struct shm_ctx_t *serv_shm_ctx;
 };
 
-void proxy_ctx_free(proxy_ctx_t *ctx)
+void proxy_ctx_free(struct proxy_ctx_t *ctx)
 {
     if (ctx->cli_shm_ctx) {
         free(ctx->cli_shm_ctx);

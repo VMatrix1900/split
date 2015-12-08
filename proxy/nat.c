@@ -29,7 +29,6 @@
 #include "nat.h"
 
 #include "attrib.h"
-#include "log.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -86,7 +85,7 @@ static int nat_pf_preinit(void)
 {
     nat_pf_fd = open("/dev/pf", O_RDONLY);
     if (nat_pf_fd < 0) {
-        log_err_printf("Error opening '/dev/pf': %s\n", strerror(errno));
+        printf("Error opening '/dev/pf': %s\n", strerror(errno));
         return -1;
     }
     return 0;
@@ -98,8 +97,7 @@ static int nat_pf_init(void)
 
     rv = fcntl(nat_pf_fd, F_SETFD, fcntl(nat_pf_fd, F_GETFD) | FD_CLOEXEC);
     if (rv == -1) {
-        log_err_printf("Error setting FD_CLOEXEC on '/dev/pf': %s\n",
-                       strerror(errno));
+        printf("Error setting FD_CLOEXEC on '/dev/pf': %s\n", strerror(errno));
         return -1;
     }
     return 0;
@@ -121,7 +119,7 @@ static int nat_pf_lookup_cb(struct sockaddr *dst_addr, socklen_t *dst_addrlen,
 
     our_addrlen = sizeof(struct sockaddr_storage);
     if (getsockname(s, (struct sockaddr *)&our_addr, &our_addrlen) == -1) {
-        log_err_printf("Error from getsockname(): %s\n", strerror(errno));
+        printf("Error from getsockname(): %s\n", strerror(errno));
         return -1;
     }
 
@@ -148,8 +146,7 @@ static int nat_pf_lookup_cb(struct sockaddr *dst_addr, socklen_t *dst_addrlen,
 
     if (ioctl(nat_pf_fd, DIOCNATLOOK, &nl)) {
         if (errno != ENOENT) {
-            log_err_printf("Error from ioctl(DIOCNATLOOK): %s\n",
-                           strerror(errno));
+            printf("Error from ioctl(DIOCNATLOOK): %s\n", strerror(errno));
         }
         return -1;
     }
@@ -200,7 +197,7 @@ static int nat_ipfilter_preinit(void)
 {
     nat_ipfilter_fd = open(IPNAT_NAME, O_RDONLY);
     if (nat_ipfilter_fd < 0) {
-        log_err_printf("Error opening '%s': %s\n", IPNAT_NAME, strerror(errno));
+        printf("Error opening '%s': %s\n", IPNAT_NAME, strerror(errno));
         return -1;
     }
     return 0;
@@ -213,8 +210,8 @@ static int nat_ipfilter_init(void)
     rv = fcntl(nat_ipfilter_fd, F_SETFD,
                fcntl(nat_ipfilter_fd, F_GETFD) | FD_CLOEXEC);
     if (rv == -1) {
-        log_err_printf("Error setting FD_CLOEXEC on '%s': %s\n", IPNAT_NAME,
-                       strerror(errno));
+        printf("Error setting FD_CLOEXEC on '%s': %s\n", IPNAT_NAME,
+               strerror(errno));
         return -1;
     }
     return 0;
@@ -233,7 +230,7 @@ static int nat_ipfilter_lookup_cb(struct sockaddr *dst_addr,
 
     our_addrlen = sizeof(struct sockaddr_storage);
     if (getsockname(s, (struct sockaddr *)&our_addr, &our_addrlen) == -1) {
-        log_err_printf("Error from getsockname(): %s\n", strerror(errno));
+        printf("Error from getsockname(): %s\n", strerror(errno));
         return -1;
     }
 
@@ -246,7 +243,7 @@ static int nat_ipfilter_lookup_cb(struct sockaddr *dst_addr,
         nl.nl_inip.s_addr = our_sai->sin_addr.s_addr;
         nl.nl_inport = our_sai->sin_port;
     } else {
-        log_err_printf(
+        printf(
             "The ipfilter NAT engine does not "
             "support IPv6 state lookups\n");
         return -1;
@@ -263,8 +260,7 @@ static int nat_ipfilter_lookup_cb(struct sockaddr *dst_addr,
 
     if (ioctl(nat_ipfilter_fd, SIOCGNATL, &ipfo) == -1) {
         if (errno != ESRCH) {
-            log_err_printf("Error from ioctl(SIOCGNATL): %s\n",
-                           strerror(errno));
+            printf("Error from ioctl(SIOCGNATL): %s\n", strerror(errno));
         }
         return -1;
     }
@@ -307,7 +303,7 @@ static int nat_netfilter_lookup_cb(struct sockaddr *dst_addr,
     int rv;
 
     if (src_addr->sa_family != AF_INET) {
-        log_err_printf(
+        printf(
             "The netfilter NAT engine only "
             "supports IPv4 state lookups\n");
         return -1;
@@ -315,8 +311,7 @@ static int nat_netfilter_lookup_cb(struct sockaddr *dst_addr,
 
     rv = getsockopt(s, SOL_IP, SO_ORIGINAL_DST, dst_addr, dst_addrlen);
     if (rv == -1) {
-        log_err_printf("Error from getsockopt(SO_ORIGINAL_DST): %s\n",
-                       strerror(errno));
+        printf("Error from getsockopt(SO_ORIGINAL_DST): %s\n", strerror(errno));
     }
     return rv;
 }
@@ -334,8 +329,7 @@ static int nat_iptransparent_socket_cb(evutil_socket_t s)
 
     rv = setsockopt(s, SOL_IP, IP_TRANSPARENT, (void *)&on, sizeof(on));
     if (rv == -1) {
-        log_err_printf("Error from setsockopt(IP_TRANSPARENT): %s\n",
-                       strerror(errno));
+        printf("Error from setsockopt(IP_TRANSPARENT): %s\n", strerror(errno));
     }
     return rv;
 }
@@ -357,7 +351,7 @@ static int nat_getsockname_lookup_cb(struct sockaddr *dst_addr,
                                      UNUSED socklen_t src_addrlen)
 {
     if (getsockname(s, dst_addr, dst_addrlen) == -1) {
-        log_err_printf("Error from getsockname(): %s\n", strerror(errno));
+        printf("Error from getsockname(): %s\n", strerror(errno));
         return -1;
     }
     return 0;
@@ -500,7 +494,7 @@ void nat_list_engines(void)
 int nat_preinit(void)
 {
     for (int i = 0; engines[i].preinitcb && engines[i].used; i++) {
-        log_dbg_printf("NAT engine preinit '%s'\n", engines[i].name);
+        printf("NAT engine preinit '%s'\n", engines[i].name);
         if (engines[i].preinitcb() == -1) return -1;
     }
     return 0;
@@ -517,7 +511,7 @@ int nat_preinit(void)
 int nat_init(void)
 {
     for (int i = 0; engines[i].initcb && engines[i].used; i++) {
-        log_dbg_printf("NAT engine init '%s'\n", engines[i].name);
+        printf("NAT engine init '%s'\n", engines[i].name);
         if (engines[i].initcb() == -1) return -1;
     }
     return 0;
@@ -530,7 +524,7 @@ int nat_init(void)
 void nat_fini(void)
 {
     for (int i = 0; engines[i].finicb && engines[i].used; i++) {
-        log_dbg_printf("NAT engine fini '%s'\n", engines[i].name);
+        printf("NAT engine fini '%s'\n", engines[i].name);
         engines[i].finicb();
     }
 }
