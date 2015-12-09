@@ -2,22 +2,81 @@
 #include <event2/event.h>
 #include <event2/listener.h>
 #include <string.h>
-#include <sys/socket.h>
 
 #include <fcntl.h>
+#include <linux/netfilter_ipv4.h>
 #include <semaphore.h>
 #include <stdio.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/types.h>
 
-#include "nat.h"
 #include "proxy.h"
 #include "shm_and_sem.h"
 
-nat_lookup_cb_t natlookup;
+int nat_netfilter_lookup(struct sockaddr *dst_addr, socklen_t *dst_addrlen,
+                         evutil_socket_t s, struct sockaddr *src_addr,
+                         socklen_t src_addrlen)
+{
+    int rv;
+
+    if (src_addr->sa_family != AF_INET) {
+        printf(
+            "The netfilter NAT engine only "
+            "supports IPv4 state lookups\n");
+        return -1;
+    }
+
+    rv = getsockopt(s, SOL_IP, SO_ORIGINAL_DST, dst_addr, dst_addrlen);
+    if (rv == -1) {
+        perror("Error from getsockopt(SO_ORIGINAL_DST):");
+    }
+    return rv;
+}
+
+int init_shm(struct shm_ctx_t *shm_ctx, char name[])
+{
+    key_t key;
+    shm_ctx->down = sem_open(strcat(DOWN_SEM, name), O_CREAT, 0644, 0);
+    if (shm_ctx->down == SEM_FAILED) {
+        perror("socket:unable to execute semaphore");
+        sem_close(shm_ctx->down);
+        return -1;
+    }
+
+    shm_ctx->up = sem_open(strcat(UP_SEM, name), O_CREAT, 0644, 0);
+    if (shm_ctx->up == SEM_FAILED) {
+        perror("unable to create semaphore");
+        sem_unlink(UP_SEM);
+        return -1;
+    }
+
+    if (0 == strcmp(name, "client")) {
+        printf("begin initiating client\n");
+        key = client_key;
+    } else if (0 == strcmp(name, "server")) {
+        printf("begin initiating server\n");
+        key = server_key;
+    } else {
+        perror("wrong arguments for init_shm");
+        return -1;
+    }
+    printf("begin shmget!");
+
+    // create the shared memory segment with this key
+    shm_ctx->shmid = shmget(key, SHMSZ, IPC_CREAT | 0666);
+    if (shm_ctx->shmid < 0) {
+        perror("socket:failure in shmget");
+        return -1;
+    }
+
+    // attach this segment to virtual memory
+    shm_ctx->shm = shmat(shm_ctx->shmid, NULL, 0);
+    return 0;
+}
 
 void copydata(evutil_socket_t fd, short what, void *ptr)
 {
@@ -86,21 +145,14 @@ void cli_eventcb(struct bufferevent *bev, short events, void *ptr)
 void accept_conn_cb(struct evconnlistener *listener, evutil_socket_t fd,
                     struct sockaddr *peeraddr, int peeraddrlen, void *ptr)
 {
+    struct proxy_ctx_t *ctx = (struct proxy_ctx_t *)ptr;
+    printf("connection captured, begin init proxy\n");
     // setup the proxy struct;
-    struct proxy_ctx_t *ctx = malloc(sizeof(struct proxy_ctx_t));
-    ctx->cli_shm_ctx = malloc(sizeof(
-        struct shm_ctx_t));  // act as a client, receive msg from the server
-    ctx->serv_shm_ctx = malloc(sizeof(
-        struct shm_ctx_t));  // act as a server, receive msg from the client
-
-    init_shm(ctx->cli_shm_ctx, "client");
-    init_shm(ctx->serv_shm_ctx, "server");
-
     /* get the real socket. using the nat table. */
-    ctx->af = peeraddr->sa_family;
     ctx->dstsocklen = sizeof(struct sockaddr_storage);
-    if (natlookup((struct sockaddr *)&ctx->dstsock, &ctx->dstsocklen, fd,
-                  peeraddr, peeraddrlen) == -1) {
+    if (nat_netfilter_lookup((struct sockaddr *)&(ctx->dstsock),
+                             &(ctx->dstsocklen), fd, peeraddr,
+                             peeraddrlen) == -1) {
         printf(
             "Connection not found in NAT "
             "state table, aborting connection\n");
@@ -146,6 +198,16 @@ int main(void)
     struct evconnlistener *listener;
     struct sockaddr_in sin;
 
+    struct proxy_ctx_t *ctx = malloc(sizeof(struct proxy_ctx_t));
+    ctx->cli_shm_ctx = malloc(sizeof(
+        struct shm_ctx_t));  // act as a client, receive msg from the server
+    ctx->serv_shm_ctx = malloc(sizeof(
+        struct shm_ctx_t));  // act as a server, receive msg from the client
+
+    init_shm(ctx->cli_shm_ctx, "client");
+    init_shm(ctx->serv_shm_ctx, "server");
+
+    printf("initiated shared memory");
     base = event_base_new();
 
     memset(&sin, 0, sizeof(sin));
@@ -155,16 +217,12 @@ int main(void)
 
     // TCP connection listener. no need to pass options arguments.
     listener = evconnlistener_new_bind(
-        base, accept_conn_cb, NULL, LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,
+        base, accept_conn_cb, ctx, LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,
         -1, (struct sockaddr *)&sin, sizeof(sin));
     if (!listener) {
         perror("Couldn't create listener");
         return 1;
     }
-
-    natlookup = nat_getlookupcb("ipfilter");  // use ipfilter as nat engine.
-    nat_preinit();
-    nat_init();
 
     event_base_dispatch(base);
     return 0;
