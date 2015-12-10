@@ -37,47 +37,6 @@ int nat_netfilter_lookup(struct sockaddr *dst_addr, socklen_t *dst_addrlen,
     return rv;
 }
 
-int init_shm(struct shm_ctx_t *shm_ctx, char name[])
-{
-    key_t key;
-    shm_ctx->down = sem_open(strcat(DOWN_SEM, name), O_CREAT, 0644, 0);
-    if (shm_ctx->down == SEM_FAILED) {
-        perror("socket:unable to execute semaphore");
-        sem_close(shm_ctx->down);
-        return -1;
-    }
-
-    shm_ctx->up = sem_open(strcat(UP_SEM, name), O_CREAT, 0644, 0);
-    if (shm_ctx->up == SEM_FAILED) {
-        perror("unable to create semaphore");
-        sem_unlink(UP_SEM);
-        return -1;
-    }
-
-    if (0 == strcmp(name, "client")) {
-        printf("begin initiating client\n");
-        key = client_key;
-    } else if (0 == strcmp(name, "server")) {
-        printf("begin initiating server\n");
-        key = server_key;
-    } else {
-        perror("wrong arguments for init_shm");
-        return -1;
-    }
-    printf("begin shmget!");
-
-    // create the shared memory segment with this key
-    shm_ctx->shmid = shmget(key, SHMSZ, IPC_CREAT | 0666);
-    if (shm_ctx->shmid < 0) {
-        perror("socket:failure in shmget");
-        return -1;
-    }
-
-    // attach this segment to virtual memory
-    shm_ctx->shm = shmat(shm_ctx->shmid, NULL, 0);
-    return 0;
-}
-
 void copydata(evutil_socket_t fd, short what, void *ptr)
 {
     struct shm_ctx_t *ctx = (struct shm_ctx_t *)ptr;
@@ -167,7 +126,7 @@ void accept_conn_cb(struct evconnlistener *listener, evutil_socket_t fd,
         bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
 
     bufferevent_setcb(ctx->serv_shm_ctx->bev, readcb, writecb, serv_eventcb,
-                      ctx);
+                      ctx->serv_shm_ctx);
 
     bufferevent_enable(ctx->serv_shm_ctx->bev, EV_READ | EV_WRITE);
     ctx->serv_shm_ctx->timer = evtimer_new(base, copydata, ctx->serv_shm_ctx);
@@ -189,7 +148,7 @@ void accept_conn_cb(struct evconnlistener *listener, evutil_socket_t fd,
 
     bufferevent_enable(ctx->cli_shm_ctx->bev, EV_READ | EV_WRITE);
 
-    ctx->serv_shm_ctx->timer = evtimer_new(base, copydata, ctx->serv_shm_ctx);
+    ctx->cli_shm_ctx->timer = evtimer_new(base, copydata, ctx->cli_shm_ctx);
 }
 
 int main(void)
