@@ -39,28 +39,31 @@ int nat_netfilter_lookup(struct sockaddr *dst_addr, socklen_t *dst_addrlen,
 
 void copydata(evutil_socket_t fd, short what, void *ptr)
 {
-    struct shm_ctx_t *ctx = (struct shm_ctx_t *)ptr;
+    // TODO determine send to client side or server side.
+    struct proxy_ctx_t *ctx = (struct proxy_ctx_t *)ptr;
     event_del(ctx->timer);
-    if (!sem_trywait(ctx->down)) {
+    if (!sem_trywait(ctx->channel->down)) {
         printf("begin writing data. The size is %zu\n", *(size_t *)(ctx->shm));
-        bufferevent_write(ctx->bev, ctx->shm + sizeof(size_t),
+        bufferevent_write(ctx->bev, ctx->channel->shm + sizeof(size_t),
                           *((size_t *)(ctx->shm)));
     }
     event_add(ctx->timer, &msec);
 }
 
-void readcb(struct bufferevent *bev, void *ptr)
+void readcb(struct bufferevent *bev, void *ptr, int server)
 {
-    struct shm_ctx_t *ctx = (struct shm_ctx_t *)ptr;
-    printf("begin reading data:\n");
+    // tag the data indicate it's server side or client side.
+    struct proxy_ctx_t *ctx = (struct proxy_ctx_t *)ptr;
     // when packet arrived, just copy it from input buffer to shared memory.
     // since we can not determine the packet lenght easily, we need to write it
     // at the front of shared memory.
-    memset(ctx->shm, 0, BUFSZ);
-    size_t read = bufferevent_read(bev, ctx->shm + sizeof(size_t), BUFSZ);
+    char *shm = ctx->channel->shm;
+    memcpy(shm, &server, sizeof(int));
+    shm += sizeof(int);
+    size_t read = bufferevent_read(bev, shm + sizeof(size_t), BUFSZ);
     if (read >= 0) {
         printf("read %zu data from network\n", read);
-        memcpy(ctx->shm, &read, sizeof(size_t));
+        memcpy(shm, &read, sizeof(size_t));
     } else {
         perror("read callback error");
     }
@@ -70,9 +73,15 @@ void readcb(struct bufferevent *bev, void *ptr)
     evtimer_add(ctx->timer, &msec);
 }
 
+void cli_readcb(struct bufferevent *bev, void *ptr)
+{
+    printf("begin read client data:\n");
+    readcb(bev, ptr, 0);
+}
+
 void writecb(struct bufferevent *bev, void *ptr)
 {
-    struct shm_ctx_t *ctx = (struct shm_ctx_t *)ptr;
+    struct proxy_ctx_t *ctx = (struct proxy_ctx_t *)ptr;
     printf("packet send to network layer\n");
     printf("The msg size: %zu\n", *((size_t *)(ctx->shm)));
 }
@@ -104,7 +113,8 @@ void cli_eventcb(struct bufferevent *bev, short events, void *ptr)
 void accept_conn_cb(struct evconnlistener *listener, evutil_socket_t fd,
                     struct sockaddr *peeraddr, int peeraddrlen, void *ptr)
 {
-    struct proxy_ctx_t *ctx = (struct proxy_ctx_t *)ptr;
+    struct proxy_ctx_t *ctx = malloc(sizeof(struct proxy_ctx_t));
+    struct shm_ctx_t *channel = (struct shm_ctx_t *)ptr;
     printf("connection captured, begin init proxy\n");
     // setup the proxy struct;
     /* get the real socket. using the nat table. */
@@ -122,49 +132,38 @@ void accept_conn_cb(struct evconnlistener *listener, evutil_socket_t fd,
 
     /* We got a new connection! Set up a bufferevent for it. */
     struct event_base *base = evconnlistener_get_base(listener);
-    ctx->serv_shm_ctx->bev =
-        bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
+    ctx->serv_bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
 
-    bufferevent_setcb(ctx->serv_shm_ctx->bev, readcb, writecb, serv_eventcb,
-                      ctx->serv_shm_ctx);
+    bufferevent_setcb(ctx->serv_bev, readcb, writecb, serv_eventcb, ctx);
 
-    bufferevent_enable(ctx->serv_shm_ctx->bev, EV_READ | EV_WRITE);
-    ctx->serv_shm_ctx->timer = evtimer_new(base, copydata, ctx->serv_shm_ctx);
+    bufferevent_enable(ctx->serv_bev, EV_READ | EV_WRITE);
 
     // then we setup client side socket.
-    ctx->cli_shm_ctx->bev =
-        bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+    ctx->cli_bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 
-    bufferevent_setcb(ctx->cli_shm_ctx->bev, readcb, writecb, cli_eventcb,
-                      ctx->cli_shm_ctx);
+    bufferevent_setcb(ctx->cli_bev, readcb, writecb, cli_eventcb, ctx);
 
-    if (bufferevent_socket_connect(ctx->cli_shm_ctx->bev,
+    if (bufferevent_socket_connect(ctx->cli_bev,
                                    (struct sockaddr *)&ctx->dstsock,
                                    ctx->dstsocklen) < 0) {
         /* Error starting connection */
-        bufferevent_free(ctx->cli_shm_ctx->bev);
+        bufferevent_free(ctx->cli_bev);
         return;
     }
 
-    bufferevent_enable(ctx->cli_shm_ctx->bev, EV_READ | EV_WRITE);
+    bufferevent_enable(ctx->cli_bev, EV_READ | EV_WRITE);
 
-    ctx->cli_shm_ctx->timer = evtimer_new(base, copydata, ctx->cli_shm_ctx);
+    ctx->timer = evtimer_new(base, copydata, ctx);
 }
 
 int main(void)
 {
+    struct shm_ctx_t *channel = malloc(sizeof(struct shm_ctx_t));
     struct event_base *base;
     struct evconnlistener *listener;
     struct sockaddr_in sin;
 
-    struct proxy_ctx_t *ctx = malloc(sizeof(struct proxy_ctx_t));
-    ctx->cli_shm_ctx = malloc(sizeof(
-        struct shm_ctx_t));  // act as a client, receive msg from the server
-    ctx->serv_shm_ctx = malloc(sizeof(
-        struct shm_ctx_t));  // act as a server, receive msg from the client
-
-    init_shm(ctx->cli_shm_ctx, "client");
-    init_shm(ctx->serv_shm_ctx, "server");
+    init_shm(channel);
 
     printf("initiated shared memory");
     base = event_base_new();
@@ -175,9 +174,10 @@ int main(void)
     sin.sin_port = htons(8443); /* Port 8443 */
 
     // TCP connection listener. no need to pass options arguments.
-    listener = evconnlistener_new_bind(
-        base, accept_conn_cb, ctx, LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,
-        -1, (struct sockaddr *)&sin, sizeof(sin));
+    listener =
+        evconnlistener_new_bind(base, accept_conn_cb, channel,
+                                LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE, -1,
+                                (struct sockaddr *)&sin, sizeof(sin));
     if (!listener) {
         perror("Couldn't create listener");
         return 1;
