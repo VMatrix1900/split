@@ -69,29 +69,29 @@ int main ()
 {
     int err;
     char     buf [4096];
-    struct ssl_channel *client = malloc(sizeof(struct ssl_channel));
-    struct ssl_channel *server = malloc(sizeof(struct ssl_channel));
-    client->shm = malloc(sizeof(struct shm_ctx_t));
-    server->shm = malloc(sizeof(struct shm_ctx_t));
-    init_shm(client->shm, "client");
-    init_shm(server->shm, "server");
-
-    SSL_CTX* ctx;
-    SSL_METHOD *meth;
+    struct ssl_channel *channel = malloc(sizeof(struct ssl_channel));
+    channel->proxies = malloc(sizeof(struct proxy));
+    SSL* cli_ssl = channel->proxies->cli_ssl;
+    SSL* serv_ssl = channel->proxies->serv_ssl;
+    channel->shm = malloc(sizeof(struct shm_ctx_t));
+    init_shm(channel->shm);
+    char *shm = channel->shm;
 
     SSL_library_init();
     OpenSSL_add_ssl_algorithms();
     SSL_load_error_strings();
     ERR_load_BIO_strings();
 
+    SSL_CTX* ctx;
+    SSL_METHOD *meth;
     meth = TLSv1_2_method();
     ctx = SSL_CTX_new (meth);
     // now we ban begin initialize the client side.
 
-    client->ssl = SSL_new(ctx);                         CHK_NULL(client->ssl);
+    cli_ssl = SSL_new(ctx);                         CHK_NULL(cli_ssl);
 
-    init_ssl_bio(client->ssl);
-    SSL_set_connect_state(client->ssl);
+    init_ssl_bio(cli_ssl);
+    SSL_set_connect_state(cli_ssl);
     // since SSL_new is copy ctx object to ssl object. so we can reuse the ctx obj.
 
     if (!ctx) {
@@ -111,36 +111,59 @@ int main ()
         fprintf(stderr,"Private key does not match the certificate public key\n");
         exit(5);
     }
-    server->ssl = SSL_new(ctx);                         CHK_NULL(server->ssl);
+    serv_ssl = SSL_new(ctx);                         CHK_NULL(serv_ssl);
 
-    init_ssl_bio(server->ssl);
+    init_ssl_bio(serv_ssl);
 
-    SSL_set_accept_state(server->ssl);
+    SSL_set_accept_state(serv_ssl);
 
+    while(sem_wait(shm->up)) {
+        int number = *((int *)shm);
+        shm += sizeof(int);
+        int i;
+        SSL * ssl;
+
+        for (i = 0; i < number; i++) {
+            int server = *((int *)shm);
+            // determine send to client side or server side.
+            if (1 == server) {
+                ssl = serv_ssl;
+            } else if (0 == server) {
+                ssl = cli_ssl;
+            } else {
+                perror("wrong server indicator!");
+            }
+            shm += sizeof(int);
+            size_t length = *((size_t *) shm);
+            bufferevent_write(bev, shm + sizeof(size_t), length);
+            shm += sizeof(size_t) * (1 + length);
+        }
+
+    }
     // do server side handshake
-    while(!SSL_is_init_finished(server->ssl)){
+    while(!SSL_is_init_finished(serv_ssl)){
         receive_up(server);
-        int r = SSL_do_handshake(server->ssl);
+        int r = SSL_do_handshake(serv_ssl);
         send_down(server);
     }
-    printf ("SSL connection using %s\n", SSL_get_cipher (server->ssl));
+    printf ("SSL connection using %s\n", SSL_get_cipher (serv_ssl));
 
-    // do client  side handshake
-    SSL_do_handshake(client->ssl); // This will write the hello message to the out_bio
+    // do client side handshake
+    SSL_do_handshake(cli_ssl); // This will write the hello message to the out_bio
 
-    while(!SSL_is_init_finished(client->ssl)){
+    while(!SSL_is_init_finished(cli_ssl)){
         send_down(client);
         receive_up(client);
-        int r = SSL_do_handshake(client->ssl);
+        int r = SSL_do_handshake(cli_ssl);
         if(r < 0){
-            switch(SSL_get_error(client->ssl, r)){
+            switch(SSL_get_error(cli_ssl, r)){
                 case SSL_ERROR_WANT_READ:
                     printf("want to read more data!\n");
                     /*receive_up(in_bio, &shm_ctx);*/
                     break;
                 case SSL_ERROR_WANT_WRITE:
                     printf("want to write more data!\n");
-                    /*send_down(client->ssl, &shm_ctx);*/
+                    /*send_down(cli_ssl, &shm_ctx);*/
                     break;
             }
         }else {
@@ -156,25 +179,25 @@ int main ()
     /*assume the client send, server response mode*/
     while(1){
         receive_up(server);
-        err = SSL_read(server->ssl, buf + sizeof(int), sizeof(buf) - 1);                   CHK_SSL(err);
+        err = SSL_read(serv_ssl, buf + sizeof(int), sizeof(buf) - 1);                   CHK_SSL(err);
         memcpy(buf, &err, sizeof(int));
 
-        err = SSL_write(client->ssl, buf + sizeof(int), *((int *)buf));  CHK_SSL(err);
+        err = SSL_write(cli_ssl, buf + sizeof(int), *((int *)buf));  CHK_SSL(err);
 
         send_down(client);
 
         receive_up(client);
-        err = SSL_read(client->ssl, buf + sizeof(int), sizeof(buf) - 1);                   CHK_SSL(err);
+        err = SSL_read(cli_ssl, buf + sizeof(int), sizeof(buf) - 1);                   CHK_SSL(err);
         memcpy(buf, &err, sizeof(int));
 
-        err = SSL_write(server->ssl, buf + sizeof(int), *((int *)buf));  CHK_SSL(err);
+        err = SSL_write(serv_ssl, buf + sizeof(int), *((int *)buf));  CHK_SSL(err);
 
         send_down(server);
     }
     /* Clean up. */
 
-    SSL_free(server->ssl);
-    SSL_free(client->ssl);
+    SSL_free(serv_ssl);
+    SSL_free(cli_ssl);
     SSL_CTX_free (ctx);
     return 0;
 }
