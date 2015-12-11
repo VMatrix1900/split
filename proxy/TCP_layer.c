@@ -39,13 +39,29 @@ int nat_netfilter_lookup(struct sockaddr *dst_addr, socklen_t *dst_addrlen,
 
 void copydata(evutil_socket_t fd, short what, void *ptr)
 {
-    // TODO determine send to client side or server side.
     struct proxy_ctx_t *ctx = (struct proxy_ctx_t *)ptr;
+    char *shm = ctx->channel->shm;
+    struct bufferevent *bev;
     event_del(ctx->timer);
     if (!sem_trywait(ctx->channel->down)) {
-        printf("begin writing data. The size is %zu\n", *(size_t *)(ctx->shm));
-        bufferevent_write(ctx->bev, ctx->channel->shm + sizeof(size_t),
-                          *((size_t *)(ctx->shm)));
+        // how many record to send?
+        int number = *((int *)shm);
+        int i;
+        for (i = 0; i < number; i++) {
+            int server = *((int *)shm);
+            // determine send to client side or server side.
+            if (1 == server) {
+                bev = ctx->serv_bev;
+            } else if (0 == server) {
+                bev = ctx->cli_bev;
+            } else {
+                perror("wrong server indicator!");
+            }
+            shm += sizeof(int);
+            size_t length = *((size_t *)shm);
+            bufferevent_write(bev, shm + sizeof(size_t), length);
+            shm += sizeof(size_t) * (1 + length);
+        }
     }
     event_add(ctx->timer, &msec);
 }
@@ -55,11 +71,16 @@ void readcb(struct bufferevent *bev, void *ptr, int server)
     // tag the data indicate it's server side or client side.
     struct proxy_ctx_t *ctx = (struct proxy_ctx_t *)ptr;
     // when packet arrived, just copy it from input buffer to shared memory.
-    // since we can not determine the packet lenght easily, we need to write it
-    // at the front of shared memory.
     char *shm = ctx->channel->shm;
+    // TODO only send 1 packet 1 time?
+    int number = 1;
+    memcpy(shm, &number, sizeof(int));
+    shm += sizeof(int);
+    // tag the server.
     memcpy(shm, &server, sizeof(int));
     shm += sizeof(int);
+    // since we can not determine the packet length easily, we need to write it
+    // at the front of SSL record.
     size_t read = bufferevent_read(bev, shm + sizeof(size_t), BUFSZ);
     if (read >= 0) {
         printf("read %zu data from network\n", read);
@@ -68,9 +89,7 @@ void readcb(struct bufferevent *bev, void *ptr, int server)
         perror("read callback error");
     }
     // notify openssl process
-    sem_post(ctx->up);
-    // add timer to wait for client write buffer.
-    evtimer_add(ctx->timer, &msec);
+    sem_post(ctx->channel->up);
 }
 
 void cli_readcb(struct bufferevent *bev, void *ptr)
@@ -79,11 +98,16 @@ void cli_readcb(struct bufferevent *bev, void *ptr)
     readcb(bev, ptr, 0);
 }
 
+void serv_readcb(struct bufferevent *bev, void *ptr)
+{
+    printf("begin read server data:\n");
+    readcb(bev, ptr, 1);
+}
+
 void writecb(struct bufferevent *bev, void *ptr)
 {
     struct proxy_ctx_t *ctx = (struct proxy_ctx_t *)ptr;
     printf("packet send to network layer\n");
-    printf("The msg size: %zu\n", *((size_t *)(ctx->shm)));
 }
 
 void serv_eventcb(struct bufferevent *bev, short events, void *ptr)
@@ -98,13 +122,12 @@ void serv_eventcb(struct bufferevent *bev, short events, void *ptr)
 
 void cli_eventcb(struct bufferevent *bev, short events, void *ptr)
 {
-    struct shm_ctx_t *ctx = (struct shm_ctx_t *)ptr;
+    struct proxy_ctx_t *ctx = (struct proxy_ctx_t *)ptr;
     if (events & BEV_EVENT_CONNECTED) {
         printf("socket: connected\n");
-        /* We're connected to dst socket, we can start send hello msg */
-        sem_wait(ctx->down);
-        bufferevent_write(bev, ctx->shm + sizeof(size_t),
-                          *((size_t *)(ctx->shm)));
+        /* We're connected to dst socket, we can start sending hello msg */
+        // add timer to wait for client write buffer.
+        evtimer_add(ctx->timer, &msec);
     } else if (events & BEV_EVENT_ERROR) {
         /* An error occured while connecting. */
     }
@@ -134,14 +157,14 @@ void accept_conn_cb(struct evconnlistener *listener, evutil_socket_t fd,
     struct event_base *base = evconnlistener_get_base(listener);
     ctx->serv_bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
 
-    bufferevent_setcb(ctx->serv_bev, readcb, writecb, serv_eventcb, ctx);
+    bufferevent_setcb(ctx->serv_bev, serv_readcb, writecb, serv_eventcb, ctx);
 
     bufferevent_enable(ctx->serv_bev, EV_READ | EV_WRITE);
 
     // then we setup client side socket.
     ctx->cli_bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 
-    bufferevent_setcb(ctx->cli_bev, readcb, writecb, cli_eventcb, ctx);
+    bufferevent_setcb(ctx->cli_bev, cli_readcb, writecb, cli_eventcb, ctx);
 
     if (bufferevent_socket_connect(ctx->cli_bev,
                                    (struct sockaddr *)&ctx->dstsock,
