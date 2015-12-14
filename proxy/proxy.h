@@ -6,7 +6,7 @@ struct proxy_ctx_t {
     struct bufferevent *cli_bev;
     struct bufferevent *serv_bev;
     struct event *timer;
-    struct shm_ctx_t *channel;
+    struct shm_ctx_t *shm_ctx;
 };
 
 void proxy_ctx_free(struct proxy_ctx_t *ctx)

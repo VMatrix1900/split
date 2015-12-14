@@ -28,32 +28,37 @@
 #define CERTF HOME "server-cert.pem"
 #define KEYF HOME "server-key.pem"
 
-void send_down(struct ssl_channel *channel)
+// send the ssl out_bio packet to shared memory, update the pointer.
+char *send_down(SSL *ssl, char *shm, int server)
 {
-    BIO *out_bio = SSL_get_wbio(channel->ssl);
-    struct shm_ctx_t *shm_ctx = channel->shm;
+    memcpy(shm, &server, sizeof(int));
+    shm += sizeof(int);
+    BIO *out_bio = SSL_get_wbio(ssl);
     /* begin send_down the packet to shared memory */
     size_t pending = BIO_ctrl_pending(out_bio);
     if (pending > 0) {
-        memset(shm_ctx->shm, 0, BUFSZ);
-        memcpy(shm_ctx->shm, &pending, sizeof(size_t));
-        int read = BIO_read(out_bio, shm_ctx->shm + sizeof(size_t), pending);
-        sem_post(shm_ctx->down);
-        printf("client send_down the packet completed. packet size is: %d\n",
-               read);
+        memcpy(shm, &pending, sizeof(size_t));
+        shm += sizeof(size_t);
+        int read = BIO_read(out_bio, shm, pending);
+        printf("send_down the packet completed. packet size is: %d\n", read);
+        shm += read;
     }
+    return shm;
 }
 
-void receive_up(struct ssl_channel *channel)
+// receive the ssl in_bio packet from shared memory, update the pointer.
+char *receive_up(SSL *ssl, char *shm)
 {
-    BIO *in_bio = SSL_get_rbio(channel->ssl);
-    struct shm_ctx_t *shm_ctx = channel->shm;
-    sem_wait(shm_ctx->up);
-    printf("begin receive up msg. The size is %zu\n",
-           *((size_t *)shm_ctx->shm));
+    BIO *in_bio = SSL_get_rbio(ssl);
+    /*printf("begin receive up msg. The size is %zu\n", *((size_t
+     * *)shm_ctx->shm));*/
+    size_t length = *((size_t *)shm);
+    shm += sizeof(size_t);
     // copy the packet to in_bio
-    BIO_write(in_bio, shm_ctx->shm + sizeof(size_t), *((size_t *)shm_ctx->shm));
-    printf("Client receive_up the packet completed\n");
+    int written = BIO_write(in_bio, shm, length);
+    printf("receive_up the packet completed. Packet size is: %d\n", written);
+    shm += written;
+    return shm;
 }
 
 int init_ssl_bio(SSL *ssl)
@@ -83,17 +88,34 @@ int init_ssl_bio(SSL *ssl)
     return 0;
 }
 
+void forward_record(SSL *from, SSL *to)
+{
+    char buf[BUFSZ];
+    int length = SSL_read(from, buf, BUFSZ);
+    SSL_write(to, buf, length);
+    // TODO erro check;
+}
+
+void clean_state(struct proxy *proxy)
+{
+    proxy->server_received = 0;
+    proxy->client_received = 0;
+    proxy->client_need_to_out = 0;
+    proxy->server_need_to_out = 0;
+}
+
 int main()
 {
     int err;
-    char buf[4096];
     struct ssl_channel *channel = malloc(sizeof(struct ssl_channel));
     channel->proxies = malloc(sizeof(struct proxy));
+    channel->proxies->client_handshake = 0;
     SSL *cli_ssl = channel->proxies->cli_ssl;
     SSL *serv_ssl = channel->proxies->serv_ssl;
-    channel->shm = malloc(sizeof(struct shm_ctx_t));
-    init_shm(channel->shm);
-    char *shm = channel->shm;
+    channel->shm_ctx = malloc(sizeof(struct shm_ctx_t));
+    init_shm(channel->shm_ctx);
+    char *shm = channel->shm_ctx->shm;
+    struct proxy *proxy = channel->proxies;
 
     SSL_library_init();
     OpenSSL_add_ssl_algorithms();
@@ -139,88 +161,86 @@ int main()
 
     SSL_set_accept_state(serv_ssl);
 
-    while (sem_wait(shm->up)) {
+    while (!sem_wait(channel->shm_ctx->up)) {
         int number = *((int *)shm);
         shm += sizeof(int);
         int i;
-        SSL *ssl;
-
+        // actually now the number is always 1; because every time TCP layer
+        // receive the msg, it will trigger this process;
         for (i = 0; i < number; i++) {
             int server = *((int *)shm);
             // determine send to client side or server side.
-            if (1 == server) {
-                ssl = serv_ssl;
-            } else if (0 == server) {
-                ssl = cli_ssl;
-            } else {
-                perror("wrong server indicator!");
-            }
             shm += sizeof(int);
-            size_t length = *((size_t *)shm);
-            bufferevent_write(bev, shm + sizeof(size_t), length);
-            shm += sizeof(size_t) * (1 + length);
-        }
-    }
-    // do server side handshake
-    while (!SSL_is_init_finished(serv_ssl)) {
-        receive_up(server);
-        int r = SSL_do_handshake(serv_ssl);
-        send_down(server);
-    }
-    printf("SSL connection using %s\n", SSL_get_cipher(serv_ssl));
+            if (1 == server) {
+                // first we need to copy the data to ssl in_bio.
+                // mark from server side.
+                proxy->server_received = 1;
+                shm = receive_up(serv_ssl, shm);
 
-    // do client side handshake
-    SSL_do_handshake(
-        cli_ssl);  // This will write the hello message to the out_bio
-
-    while (!SSL_is_init_finished(cli_ssl)) {
-        send_down(client);
-        receive_up(client);
-        int r = SSL_do_handshake(cli_ssl);
-        if (r < 0) {
-            switch (SSL_get_error(cli_ssl, r)) {
-            case SSL_ERROR_WANT_READ:
-                printf("want to read more data!\n");
-                /*receive_up(in_bio, &shm_ctx);*/
-                break;
-            case SSL_ERROR_WANT_WRITE:
-                printf("want to write more data!\n");
-                /*send_down(cli_ssl, &shm_ctx);*/
-                break;
+            } else if (0 == server) {
+                // do client staff
+                // has a record for ssl client, do handhshake or forward.
+                proxy->client_received = 1;
+                shm = receive_up(cli_ssl, shm);
+            } else {
+                printf("Wrong server indicator:%d\n", server);
+                exit(1);
             }
-        } else {
-            printf("handshake is done!\n");
-            break;
         }
+        // all record has been read into the SSL in_bio
+        // do handshake or forward.
+
+        if (proxy->server_received) {
+            // do server side staff
+            // has a record for ssl server, either do handshake or forward the
+            // msg.
+            // server in_bio has some data to process;
+            if (!SSL_is_init_finished(serv_ssl)) {
+                SSL_do_handshake(serv_ssl);
+                proxy->server_need_to_out = 1;
+
+                if (!proxy->client_handshake) {
+                    // initiate client handshake.
+                    SSL_do_handshake(cli_ssl);
+                    proxy->client_need_to_out = 1;
+                    proxy->client_handshake = 1;
+                    // now the record is in the out_bio of client ssl and
+                    // serv_ssl
+                    // we need to copy it to the shared memory
+                }
+            } else {
+                forward_record(serv_ssl, cli_ssl);
+                proxy->client_need_to_out = 1;
+            }
+        }
+        if (proxy->client_received) {
+            // client bio has some data to process;
+            if (!SSL_is_init_finished(cli_ssl)) {
+                int r = SSL_do_handshake(cli_ssl);
+                if (r <
+                    0) {  // handshake not finished, need to send down the msg
+                    proxy->client_need_to_out = 1;
+                }
+            } else {
+                forward_record(cli_ssl, serv_ssl);
+                proxy->server_need_to_out = 1;
+            }
+        }
+        // now we finish the SSL record process; begin to send down the record.
+        int num = proxy->server_need_to_out + proxy->client_need_to_out;
+        // reset the shm pointer
+        shm = channel->shm_ctx->shm;
+        memcpy(shm, &num, sizeof(int));
+        shm += sizeof(int);
+        if (proxy->server_need_to_out) {
+            shm = send_down(serv_ssl, shm, 1);
+        }
+        if (proxy->client_need_to_out) {
+            shm = send_down(cli_ssl, shm, 0);
+        }
+        clean_state(proxy);
+        sem_post(channel->shm_ctx->down);
     }
-    // now we get both side ssl connection established.
-    // begin the proxy;
-
-    /* --------------------------------------------------- */
-    /* DATA EXCHANGE - Receive message and send reply. */
-    /*assume the client send, server response mode*/
-    while (1) {
-        receive_up(server);
-        err = SSL_read(serv_ssl, buf + sizeof(int), sizeof(buf) - 1);
-        CHK_SSL(err);
-        memcpy(buf, &err, sizeof(int));
-
-        err = SSL_write(cli_ssl, buf + sizeof(int), *((int *)buf));
-        CHK_SSL(err);
-
-        send_down(client);
-
-        receive_up(client);
-        err = SSL_read(cli_ssl, buf + sizeof(int), sizeof(buf) - 1);
-        CHK_SSL(err);
-        memcpy(buf, &err, sizeof(int));
-
-        err = SSL_write(serv_ssl, buf + sizeof(int), *((int *)buf));
-        CHK_SSL(err);
-
-        send_down(server);
-    }
-    /* Clean up. */
 
     SSL_free(serv_ssl);
     SSL_free(cli_ssl);
