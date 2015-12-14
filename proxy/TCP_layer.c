@@ -42,27 +42,30 @@ nat_netfilter_lookup(struct sockaddr *dst_addr, socklen_t *dst_addrlen,
 void
 copydata(evutil_socket_t fd, short what, void* ptr){
     struct proxy_ctx_t *ctx = (struct proxy_ctx_t *) ptr;
-    char *shm = ctx->channel->shm;
+    char *shm = ctx->shm_ctx->shm;
     struct bufferevent *bev;
     event_del(ctx->timer);
-    if(!sem_trywait(ctx->channel->down)){
+    if(!sem_trywait(ctx->shm_ctx->down)){
         // how many record to send?
         int number = *((int *)shm);
+        shm += sizeof(int);
         int i;
         for (i = 0; i < number; i++) {
             int server = *((int *)shm);
+            shm += sizeof(int);
             // determine send to client side or server side.
             if (1 == server) {
                 bev = ctx->serv_bev;
             } else if (0 == server) {
                 bev = ctx->cli_bev;
             } else {
-                perror("wrong server indicator!");
+                printf("Wrong server indicator:%d\n", server);
+                exit(1);
             }
-            shm += sizeof(int);
             size_t length = *((size_t *) shm);
-            bufferevent_write(bev, shm + sizeof(size_t), length);
-            shm += sizeof(size_t) * (1 + length);
+            shm += sizeof(size_t);
+            bufferevent_write(bev, shm, length);
+            shm += length;
         }
     }
     event_add(ctx->timer, &msec);
@@ -71,9 +74,11 @@ copydata(evutil_socket_t fd, short what, void* ptr){
 void
 readcb(struct bufferevent *bev, void *ptr, int server) {
     // tag the data indicate it's server side or client side.
+    // only when the data is processed by ssl process
+    sem_wait(ctx->shm_ctx->down);
     struct proxy_ctx_t *ctx = (struct proxy_ctx_t *) ptr;
     // when packet arrived, just copy it from input buffer to shared memory.
-    char *shm = ctx->channel->shm;
+    char *shm = ctx->shm_ctx->shm;
     // TODO only send 1 packet 1 time?
     int number = 1;
     memcpy(shm, &number, sizeof(int));
@@ -89,8 +94,10 @@ readcb(struct bufferevent *bev, void *ptr, int server) {
     } else {
         perror("read callback error");
     }
+    // after send the msg wait for 1msec for response
+    evtimer_add(ctx->timer, &msec);
     // notify openssl process
-    sem_post(ctx->channel->up);
+    sem_post(ctx->shm_ctx->up);
 }
 
 void cli_readcb(struct bufferevent *bev, void *ptr){
@@ -105,7 +112,6 @@ void serv_readcb(struct bufferevent *bev, void *ptr){
 
 void
 writecb(struct bufferevent *bev, void *ptr) {
-    struct proxy_ctx_t *ctx = (struct proxy_ctx_t *) ptr;
     printf("packet send to network layer\n");
 }
 
@@ -124,9 +130,6 @@ cli_eventcb(struct bufferevent *bev, short events, void *ptr){
     struct proxy_ctx_t *ctx = (struct proxy_ctx_t *) ptr;
     if (events & BEV_EVENT_CONNECTED) {
         printf("socket: connected\n");
-        /* We're connected to dst socket, we can start sending hello msg */
-        // add timer to wait for client write buffer.
-        evtimer_add(ctx->timer, &msec);
     } else if (events & BEV_EVENT_ERROR) {
          /* An error occured while connecting. */
     }
@@ -138,9 +141,9 @@ accept_conn_cb(struct evconnlistener *listener,
         void *ptr)
 {
     struct proxy_ctx_t *ctx = malloc(sizeof(struct proxy_ctx_t));
-    struct shm_ctx_t *channel = (struct shm_ctx_t *) ptr;
     printf("connection captured, begin init proxy\n");
     // setup the proxy struct;
+    ctx->shm_ctx = (struct shm_ctx_t *) ptr;
     /* get the real socket. using the nat table. */
     ctx->dstsocklen = sizeof(struct sockaddr_storage);
     if (nat_netfilter_lookup((struct sockaddr *)&(ctx->dstsock), &(ctx->dstsocklen),
@@ -152,6 +155,8 @@ accept_conn_cb(struct evconnlistener *listener,
         return;
     }
 
+    // enable down semaphore so that tcp process can send up data.
+    sem_post(ctx->shm_ctx->down);
     /* We got a new connection! Set up a bufferevent for it. */
     struct event_base *base = evconnlistener_get_base(listener);
     ctx->serv_bev = bufferevent_socket_new(
@@ -181,14 +186,14 @@ accept_conn_cb(struct evconnlistener *listener,
 
 int main(void)
 {
-    struct shm_ctx_t *channel = malloc(sizeof(struct shm_ctx_t));
+    struct shm_ctx_t *shm_ctx = malloc(sizeof(struct shm_ctx_t));
     struct event_base *base;
     struct evconnlistener *listener;
     struct sockaddr_in sin;
 
-    init_shm(channel);
+    init_shm(shm_ctx);
 
-    printf("initiated shared memory");
+    printf("initiated shared memory\n");
     base = event_base_new();
 
     memset(&sin, 0, sizeof(sin));
@@ -197,7 +202,7 @@ int main(void)
     sin.sin_port = htons(8443); /* Port 8443 */
 
     // TCP connection listener. no need to pass options arguments.
-    listener = evconnlistener_new_bind(base, accept_conn_cb, channel,
+    listener = evconnlistener_new_bind(base, accept_conn_cb, shm_ctx,
             LEV_OPT_CLOSE_ON_FREE|LEV_OPT_REUSEABLE, -1,
             (struct sockaddr*)&sin, sizeof(sin));
     if (!listener) {
