@@ -91,7 +91,6 @@ clean_state(struct proxy *proxy) {
 
 int main ()
 {
-    int err;
     struct ssl_channel *channel = malloc(sizeof(struct ssl_channel));
     channel->proxies = malloc(sizeof(struct proxy));
     channel->proxies->client_handshake = 0;
@@ -99,7 +98,8 @@ int main ()
     SSL* serv_ssl = channel->proxies->serv_ssl;
     channel->shm_ctx = malloc(sizeof(struct shm_ctx_t));
     init_shm(channel->shm_ctx);
-    char *shm = channel->shm_ctx->shm;
+    char *shm_up = channel->shm_ctx->shm_up;
+    char *shm_down = channel->shm_ctx->shm_down;
     struct proxy *proxy = channel->proxies;
 
     SSL_library_init();
@@ -108,7 +108,7 @@ int main ()
     ERR_load_BIO_strings();
 
     SSL_CTX* ctx;
-    SSL_METHOD *meth;
+    const SSL_METHOD *meth;
     meth = TLSv1_2_method();
     ctx = SSL_CTX_new (meth);
     // now we ban begin initialize the client side.
@@ -119,23 +119,19 @@ int main ()
     SSL_set_connect_state(cli_ssl);
     // since SSL_new is copy ctx object to ssl object. so we can reuse the ctx obj.
 
-    if (!ctx) {
-        ERR_print_errors_fp(stderr);
-        exit(2);
-    }
     if (SSL_CTX_use_certificate_file(ctx, CERTF, SSL_FILETYPE_PEM) <= 0) {
-        ERR_print_errors_fp(stderr);
+        perror("certificate wrong:");
         exit(3);
     }
     if (SSL_CTX_use_PrivateKey_file(ctx, KEYF, SSL_FILETYPE_PEM) <= 0) {
-        ERR_print_errors_fp(stderr);
+        perror("key wrong");
         exit(4);
     }
-
     if (!SSL_CTX_check_private_key(ctx)) {
-        fprintf(stderr,"Private key does not match the certificate public key\n");
+        perror("Private key does not match the certificate public key");
         exit(5);
     }
+
     serv_ssl = SSL_new(ctx);                         CHK_NULL(serv_ssl);
 
     init_ssl_bio(serv_ssl);
@@ -143,31 +139,32 @@ int main ()
     SSL_set_accept_state(serv_ssl);
 
     while(!sem_wait(channel->shm_ctx->up)) {
-        int number = *((int *)shm);
-        shm += sizeof(int);
+        int number = *((int *)shm_up);
+        shm_up += sizeof(int);
         int i;
         // actually now the number is always 1; because every time TCP layer receive the msg, it will trigger this process;
         for (i = 0; i < number; i++) {
-            int server = *((int *)shm);
+            int server = *((int *)shm_up);
             // determine send to client side or server side.
-            shm += sizeof(int);
+            shm_up += sizeof(int);
             if (1 == server) {
                 // first we need to copy the data to ssl in_bio.
                 // mark from server side.
                 proxy->server_received = 1;
-                shm = receive_up(serv_ssl, shm);
+                shm_up = receive_up(serv_ssl, shm_up);
 
             } else if (0 == server) {
                 // do client staff
                 // has a record for ssl client, do handhshake or forward.
                 proxy->client_received = 1;
-                shm = receive_up(cli_ssl, shm);
+                shm_up = receive_up(cli_ssl, shm_up);
             } else {
                 printf("Wrong server indicator:%d\n", server);
                 exit(1);
             }
         }
-        // all record has been read into the SSL in_bio
+        // all record has been read into the SSL in_bio, now we can release the write lock
+        sem_post(channel->shm_ctx->write_lock);
         // do handshake or forward.
 
         if (proxy->server_received) {
@@ -204,19 +201,23 @@ int main ()
                 proxy->server_need_to_out = 1;
             }
         }
+
         // now we finish the SSL record process; begin to send down the record.
         int num = proxy->server_need_to_out + proxy->client_need_to_out;
-        // reset the shm pointer
-        shm = channel->shm_ctx->shm;
-        memcpy(shm, &num, sizeof(int));
-        shm += sizeof(int);
+        memcpy(shm_down, &num, sizeof(int));
+        shm_down += sizeof(int);
         if (proxy->server_need_to_out) {
-            shm = send_down(serv_ssl, shm, 1);
+            shm_down = send_down(serv_ssl, shm_down, 1);
         }
         if (proxy->client_need_to_out) {
-            shm = send_down(cli_ssl, shm, 0);
+            shm_down = send_down(cli_ssl, shm_down, 0);
         }
         clean_state(proxy);
+
+        // reset the shm pointer
+        shm_up = channel->shm_ctx->shm_up;
+        shm_down = channel->shm_ctx->shm_down;
+
         sem_post(channel->shm_ctx->down);
     }
 

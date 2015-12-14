@@ -38,11 +38,10 @@ nat_netfilter_lookup(struct sockaddr *dst_addr, socklen_t *dst_addrlen,
 	return rv;
 }
 
-
 void
 copydata(evutil_socket_t fd, short what, void* ptr){
     struct proxy_ctx_t *ctx = (struct proxy_ctx_t *) ptr;
-    char *shm = ctx->shm_ctx->shm;
+    char *shm = ctx->shm_ctx->shm_down;
     struct bufferevent *bev;
     event_del(ctx->timer);
     if(!sem_trywait(ctx->shm_ctx->down)){
@@ -75,10 +74,11 @@ void
 readcb(struct bufferevent *bev, void *ptr, int server) {
     // tag the data indicate it's server side or client side.
     // only when the data is processed by ssl process
-    sem_wait(ctx->shm_ctx->down);
     struct proxy_ctx_t *ctx = (struct proxy_ctx_t *) ptr;
     // when packet arrived, just copy it from input buffer to shared memory.
-    char *shm = ctx->shm_ctx->shm;
+    char *shm = ctx->shm_ctx->shm_up;
+    // get the write lock
+    sem_wait(ctx->shm_ctx->write_lock);
     // TODO only send 1 packet 1 time?
     int number = 1;
     memcpy(shm, &number, sizeof(int));
@@ -100,12 +100,14 @@ readcb(struct bufferevent *bev, void *ptr, int server) {
     sem_post(ctx->shm_ctx->up);
 }
 
-void cli_readcb(struct bufferevent *bev, void *ptr){
+void
+cli_readcb(struct bufferevent *bev, void *ptr){
     printf("begin read client data:\n");
     readcb(bev, ptr, 0);
 }
 
-void serv_readcb(struct bufferevent *bev, void *ptr){
+void
+serv_readcb(struct bufferevent *bev, void *ptr){
     printf("begin read server data:\n");
     readcb(bev, ptr, 1);
 }
@@ -127,9 +129,8 @@ serv_eventcb(struct bufferevent *bev, short events, void *ptr){
 
 void
 cli_eventcb(struct bufferevent *bev, short events, void *ptr){
-    struct proxy_ctx_t *ctx = (struct proxy_ctx_t *) ptr;
     if (events & BEV_EVENT_CONNECTED) {
-        printf("socket: connected\n");
+        printf("client socket: connected\n");
     } else if (events & BEV_EVENT_ERROR) {
          /* An error occured while connecting. */
     }
@@ -155,8 +156,8 @@ accept_conn_cb(struct evconnlistener *listener,
         return;
     }
 
-    // enable down semaphore so that tcp process can send up data.
-    sem_post(ctx->shm_ctx->down);
+    // enable the up channel write permission.
+    sem_post(ctx->shm_ctx->write_lock);
     /* We got a new connection! Set up a bufferevent for it. */
     struct event_base *base = evconnlistener_get_base(listener);
     ctx->serv_bev = bufferevent_socket_new(
