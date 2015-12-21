@@ -153,7 +153,10 @@ void accept_conn_cb(struct evconnlistener *listener, evutil_socket_t fd,
     printf("connection captured, begin init proxy\n");
     // setup the proxy struct;
     struct proxy_ctx *proxy = (struct proxy_ctx *)ptr;
+<<<<<<< HEAD
     ctx->shm_ctx = proxy->shm_ctx;
+=======
+>>>>>>> 61c6fe609f2dfbf877aba4152d1accc769b0d3e4
     ctx->index = conns;
     proxy->conns[conns] = ctx;
     ctx->timer = proxy->timer;
