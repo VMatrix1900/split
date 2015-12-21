@@ -17,6 +17,7 @@
 #include "shm_and_sem.h"
 #include "proxy.h"
 
+int conns = 0;
 
 int
 nat_netfilter_lookup(struct sockaddr *dst_addr, socklen_t *dst_addrlen,
@@ -40,9 +41,11 @@ nat_netfilter_lookup(struct sockaddr *dst_addr, socklen_t *dst_addrlen,
 
 void
 copydata(evutil_socket_t fd, short what, void* ptr){
-    struct proxy_ctx_t *ctx = (struct proxy_ctx_t *) ptr;
+    // globol timer trigger this one ptr is proxy_ctx
+    struct proxy_ctx *ctx = (struct proxy_ctx *) ptr;
     char *shm = ctx->shm_ctx->shm_down;
     struct bufferevent *bev;
+    struct pxy_conn *conn;
     event_del(ctx->timer);
     if(!sem_trywait(ctx->shm_ctx->down)){
         // how many record to send?
@@ -50,13 +53,16 @@ copydata(evutil_socket_t fd, short what, void* ptr){
         shm += sizeof(int);
         int i;
         for (i = 0; i < number; i++) {
+            int index = *((int *)shm);
+            shm += sizeof(int);
+            conn = ctx->conns[index];
             int server = *((int *)shm);
             shm += sizeof(int);
             // determine send to client side or server side.
             if (1 == server) {
-                bev = ctx->serv_bev;
+                bev = conn->serv_bev;
             } else if (0 == server) {
-                bev = ctx->cli_bev;
+                bev = conn->cli_bev;
             } else {
                 printf("Wrong server indicator:%d\n", server);
                 exit(1);
@@ -74,7 +80,7 @@ void
 readcb(struct bufferevent *bev, void *ptr, int server) {
     // tag the data indicate it's server side or client side.
     // only when the data is processed by ssl process
-    struct proxy_ctx_t *ctx = (struct proxy_ctx_t *) ptr;
+    struct pxy_conn *ctx = (struct pxy_conn *) ptr;
     // when packet arrived, just copy it from input buffer to shared memory.
     char *shm = ctx->shm_ctx->shm_up;
     // get the write lock
@@ -82,6 +88,9 @@ readcb(struct bufferevent *bev, void *ptr, int server) {
     // TODO only send 1 packet 1 time?
     int number = 1;
     memcpy(shm, &number, sizeof(int));
+    shm += sizeof(int);
+    // tag the index
+    memcpy(shm, &(ctx->index), sizeof(int));
     shm += sizeof(int);
     // tag the server.
     memcpy(shm, &server, sizeof(int));
@@ -141,10 +150,15 @@ accept_conn_cb(struct evconnlistener *listener,
         evutil_socket_t fd, struct sockaddr *peeraddr, int peeraddrlen,
         void *ptr)
 {
-    struct proxy_ctx_t *ctx = malloc(sizeof(struct proxy_ctx_t));
+    struct pxy_conn *ctx = malloc(sizeof(struct pxy_conn));
     printf("connection captured, begin init proxy\n");
     // setup the proxy struct;
-    ctx->shm_ctx = (struct shm_ctx_t *) ptr;
+    struct proxy_ctx *proxy = (struct proxy_ctx *) ptr;
+    ctx->index = conns;
+    proxy->conns[conns] = ctx;
+    ctx->timer = proxy->timer;
+    conns++;
+
     /* get the real socket. using the nat table. */
     ctx->dstsocklen = sizeof(struct sockaddr_storage);
     if (nat_netfilter_lookup((struct sockaddr *)&(ctx->dstsock), &(ctx->dstsocklen),
@@ -180,22 +194,21 @@ accept_conn_cb(struct evconnlistener *listener,
     }
 
     bufferevent_enable(ctx->cli_bev, EV_READ|EV_WRITE);
-
-    ctx->timer = evtimer_new(base, copydata, ctx);
 }
 
 
 int main(void)
 {
-    struct shm_ctx_t *shm_ctx = malloc(sizeof(struct shm_ctx_t));
-    struct event_base *base;
     struct evconnlistener *listener;
     struct sockaddr_in sin;
+    struct proxy_ctx *proxy = malloc(sizeof(struct proxy_ctx));
+    proxy->shm_ctx = malloc(sizeof(struct shm_ctx_t));
 
-    init_shm(shm_ctx);
+    init_shm(proxy->shm_ctx);
 
     printf("initiated shared memory\n");
-    base = event_base_new();
+    proxy->base = event_base_new();
+    proxy->timer = evtimer_new(proxy->base, copydata, proxy);
 
     memset(&sin, 0, sizeof(sin));
     sin.sin_family = AF_INET;
@@ -203,7 +216,7 @@ int main(void)
     sin.sin_port = htons(8443); /* Port 8443 */
 
     // TCP connection listener. no need to pass options arguments.
-    listener = evconnlistener_new_bind(base, accept_conn_cb, shm_ctx,
+    listener = evconnlistener_new_bind(proxy->base, accept_conn_cb, proxy,
             LEV_OPT_CLOSE_ON_FREE|LEV_OPT_REUSEABLE, -1,
             (struct sockaddr*)&sin, sizeof(sin));
     if (!listener) {
@@ -211,6 +224,6 @@ int main(void)
         return 1;
     }
 
-    event_base_dispatch(base);
+    event_base_dispatch(proxy->base);
     return 0;
 }
