@@ -1,0 +1,1 @@
+#define MAXCONNS 10

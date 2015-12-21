@@ -1,11 +1,15 @@
 #include <openssl/ssl.h>
+#include "constants.h"
 #include "shm_and_sem.h"
+
 struct ssl_channel {
-    struct proxy *proxies;
+    int conns;
+    struct proxy *proxies[MAXCONNS];
     struct shm_ctx_t *shm_ctx;
 };
 
 struct proxy {
+    int index;
     SSL *cli_ssl;
     SSL *serv_ssl;
     int client_handshake;
