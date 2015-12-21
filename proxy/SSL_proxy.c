@@ -94,6 +94,11 @@ proxy_new(int index) {
     struct proxy *proxy = malloc(sizeof(struct proxy));
     proxy->index = index;
     proxy->client_handshake = 0;
+<<<<<<< HEAD
+=======
+    SSL* cli_ssl = proxy->cli_ssl;
+    SSL* serv_ssl = proxy->serv_ssl;
+>>>>>>> 61c6fe609f2dfbf877aba4152d1accc769b0d3e4
     SSL_CTX* ctx;
     const SSL_METHOD *meth;
     meth = TLSv1_2_method();
@@ -141,6 +146,27 @@ int main ()
     init_shm(channel->shm_ctx);
     channel->conns = 0;
 
+<<<<<<< HEAD
+=======
+    SSL_set_accept_state(serv_ssl);
+    SSL_CTX_free(ctx);
+
+    return proxy;
+}
+
+int main ()
+{
+    SSL_library_init();
+    OpenSSL_add_ssl_algorithms();
+    SSL_load_error_strings();
+    ERR_load_BIO_strings();
+
+    struct ssl_channel *channel = malloc(sizeof(struct ssl_channel));
+    channel->shm_ctx = malloc(sizeof(struct shm_ctx_t));
+    init_shm(channel->shm_ctx);
+    channel->conns = 0;
+
+>>>>>>> 61c6fe609f2dfbf877aba4152d1accc769b0d3e4
     char *shm_up = channel->shm_ctx->shm_up;
     char *shm_down = channel->shm_ctx->shm_down;
     struct proxy *proxy;
@@ -168,14 +194,20 @@ int main ()
                 // first we need to copy the data to ssl in_bio.
                 // mark from server side.
                 proxy->server_received = 1;
+<<<<<<< HEAD
                 printf("server side receive up");
+=======
+>>>>>>> 61c6fe609f2dfbf877aba4152d1accc769b0d3e4
                 shm_up = receive_up(proxy->serv_ssl, shm_up);
 
             } else if (0 == server) {
                 // do client staff
                 // has a record for ssl client, do handhshake or forward.
                 proxy->client_received = 1;
+<<<<<<< HEAD
                 printf("client side receive up");
+=======
+>>>>>>> 61c6fe609f2dfbf877aba4152d1accc769b0d3e4
                 shm_up = receive_up(proxy->cli_ssl, shm_up);
             } else {
                 printf("Wrong server indicator:%d\n", server);
@@ -203,7 +235,10 @@ int main ()
                     // we need to copy it to the shared memory
                 }
             } else {
+<<<<<<< HEAD
                 printf("server side handshake is done.");
+=======
+>>>>>>> 61c6fe609f2dfbf877aba4152d1accc769b0d3e4
                 forward_record(proxy->serv_ssl, proxy->cli_ssl);
                 proxy->client_need_to_out = 1;
             }
@@ -229,6 +264,7 @@ int main ()
         memcpy(shm_down, &num, sizeof(int));
         shm_down += sizeof(int);
         if (proxy->server_need_to_out) {
+<<<<<<< HEAD
             printf("server side send down\n");
             memcpy(shm_down, &proxy->index, sizeof(int));
             shm_down += sizeof(int);
@@ -238,6 +274,11 @@ int main ()
             printf("client side send down\n");
             memcpy(shm_down, &proxy->index, sizeof(int));
             shm_down += sizeof(int);
+=======
+            shm_down = send_down(proxy->serv_ssl, shm_down, 1);
+        }
+        if (proxy->client_need_to_out) {
+>>>>>>> 61c6fe609f2dfbf877aba4152d1accc769b0d3e4
             shm_down = send_down(proxy->cli_ssl, shm_down, 0);
         }
         clean_state(proxy);
