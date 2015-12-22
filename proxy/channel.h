@@ -12,7 +12,8 @@ struct proxy {
     int index;
     SSL *cli_ssl;
     SSL *serv_ssl;
-    int client_handshake;
+    int client_handshake_begin;
+    int client_handshake_done;
     int client_received;
     int server_received;
     int client_need_to_out;
