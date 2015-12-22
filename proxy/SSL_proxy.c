@@ -101,19 +101,12 @@ void forward_record(SSL *from, SSL *to)
     }
 }
 
-void clean_state(struct proxy *proxy)
-{
-    proxy->server_received = 0;
-    proxy->client_received = 0;
-    proxy->client_need_to_out = 0;
-    proxy->server_need_to_out = 0;
-}
-
 struct proxy *proxy_new(int index)
 {
     struct proxy *proxy = malloc(sizeof(struct proxy));
     proxy->index = index;
-    proxy->client_handshake = 0;
+    proxy->client_handshake_begin = 0;
+    proxy->client_handshake_done = 0;
     SSL_CTX *ctx;
     const SSL_METHOD *meth;
     meth = TLSv1_2_method();
@@ -206,6 +199,7 @@ int main()
                 exit(1);
             }
         }
+
         // all record has been read into the SSL in_bio, now we can release the
         // write lock
         sem_post(channel->shm_ctx->write_lock);
@@ -220,11 +214,11 @@ int main()
                 SSL_do_handshake(proxy->serv_ssl);
                 proxy->server_need_to_out = 1;
 
-                if (!proxy->client_handshake) {
+                if (!proxy->client_handshake_begin) {
                     // initiate client handshake.
                     SSL_do_handshake(proxy->cli_ssl);
                     proxy->client_need_to_out = 1;
-                    proxy->client_handshake = 1;
+                    proxy->client_handshake_begin = 1;
                     // now the record is in the out_bio of client ssl and
                     // proxy->serv_ssl
                     // we need to copy it to the shared memory
@@ -235,6 +229,7 @@ int main()
                 forward_record(proxy->serv_ssl, proxy->cli_ssl);
                 proxy->client_need_to_out = 1;
             }
+            proxy->server_received = 0;
         }
         if (proxy->client_received) {
             // client bio has some data to process;
@@ -244,6 +239,7 @@ int main()
                     0) {  // handshake not finished, need to send down the msg
                     proxy->client_need_to_out = 1;
                 } else {
+                    proxy->client_handshake_done = 1;
                     printf("client handshake is done");
                 }
             } else {
@@ -251,25 +247,29 @@ int main()
                 forward_record(proxy->cli_ssl, proxy->serv_ssl);
                 proxy->server_need_to_out = 1;
             }
+            proxy->client_received = 0;
         }
 
         // now we finish the SSL record process; begin to send down the record.
-        int num = proxy->server_need_to_out + proxy->client_need_to_out;
+        int num =
+            (proxy->client_handshake_done ? proxy->server_need_to_out : 0) +
+            proxy->client_need_to_out;
         memcpy(shm_down, &num, sizeof(int));
         shm_down += sizeof(int);
-        if (proxy->server_need_to_out) {
+        if (proxy->client_handshake_done && proxy->server_need_to_out) {
             printf("server side send down\n");
             memcpy(shm_down, &proxy->index, sizeof(int));
             shm_down += sizeof(int);
             shm_down = send_down(proxy->serv_ssl, shm_down, 1);
+            proxy->server_need_to_out = 0;
         }
         if (proxy->client_need_to_out) {
             printf("client side send down\n");
             memcpy(shm_down, &proxy->index, sizeof(int));
             shm_down += sizeof(int);
             shm_down = send_down(proxy->cli_ssl, shm_down, 0);
+            proxy->client_need_to_out = 0;
         }
-        clean_state(proxy);
 
         // reset the shm pointer
         shm_up = channel->shm_ctx->shm_up;
