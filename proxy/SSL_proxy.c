@@ -101,10 +101,10 @@ void forward_record(SSL *from, SSL *to)
     }
 }
 
-struct proxy *proxy_new(int index)
+struct proxy *proxy_new(struct ssl_channel *ctx)
 {
     struct proxy *proxy = malloc(sizeof(struct proxy));
-    proxy->index = index;
+    proxy->index = ctx->conns++;
     proxy->client_handshake_begin = 0;
     proxy->client_handshake_done = 0;
     SSL_CTX *ctx;
@@ -118,35 +118,69 @@ struct proxy *proxy_new(int index)
 
     init_ssl_bio(proxy->cli_ssl);
     SSL_set_connect_state(proxy->cli_ssl);
-    // since SSL_new is copy ctx object to ssl object. so we can reuse the ctx
-    // obj.
 
-    if (SSL_CTX_use_certificate_file(ctx, CERTF, SSL_FILETYPE_PEM) <= 0) {
-        perror("certificate wrong:");
-        exit(3);
-    }
-    if (SSL_CTX_use_PrivateKey_file(ctx, KEYF, SSL_FILETYPE_PEM) <= 0) {
-        perror("key wrong");
-        exit(4);
-    }
-    if (!SSL_CTX_check_private_key(ctx)) {
-        perror("Private key does not match the certificate public key");
-        exit(5);
-    }
-
-    proxy->serv_ssl = SSL_new(ctx);
-    CHK_NULL(proxy->serv_ssl);
-
-    init_ssl_bio(proxy->serv_ssl);
-
-    SSL_set_accept_state(proxy->serv_ssl);
     SSL_CTX_free(ctx);
 
     return proxy;
 }
 
+void setup_proxy_server_ssl(struct proxy *proxy)
+{
+    proxy->serv_ssl = create_proxy_server_ssl(proxy);
+    init_ssl_bio(proxy->serv_ssl);
+    SSL_set_accept_state(proxy->serv_ssl);
+}
+
+SSL *create_proxy_server_ssl(struct proxy *proxy)
+{
+    cert_t *cert;
+
+    proxy->origcrt = SSL_get_peer_certificate(proxy->cli_ssl);
+
+    cert->crt = ssl_x509_forge(proxy->ctx->cacrt, proxy->ctx->cakey,
+                               proxy->origcrt, NULL, proxy->ctx->key);
+    cert_set_key(cert, ctx->opts->key);
+    cert_set_chain(cert, ctx->opts->chain);
+    if (!cert) return NULL;
+
+    SSL_CTX *sslctx = SSL_CTX_new(TLSv1_2_method());
+    if (!sslctx) return NULL;
+    SSL_CTX_set_options(sslctx, SSL_OP_ALL);
+
+    SSL_CTX_set_cipher_list(sslctx, ctx->opts->ciphers);
+    SSL_CTX_sess_set_new_cb(sslctx, pxy_ossl_sessnew_cb);
+    SSL_CTX_sess_set_remove_cb(sslctx, pxy_ossl_sessremove_cb);
+    SSL_CTX_sess_set_get_cb(sslctx, pxy_ossl_sessget_cb);
+    SSL_CTX_set_session_cache_mode(
+        sslctx, SSL_SESS_CACHE_SERVER | SSL_SESS_CACHE_NO_INTERNAL);
+#ifdef USE_SSL_SESSION_ID_CONTEXT
+    SSL_CTX_set_session_id_context(sslctx, (void *)(&ssl_session_context),
+                                   sizeof(ssl_session_context));
+#endif /* USE_SSL_SESSION_ID_CONTEXT */
+    SSL_CTX_use_certificate(sslctx, crt);
+    SSL_CTX_use_PrivateKey(sslctx, key);
+    for (int i = 0; i < sk_X509_num(chain); i++) {
+        X509 *c = sk_X509_value(chain, i);
+        ssl_x509_refcount_inc(c); /* next call consumes a reference */
+        SSL_CTX_add_extra_chain_cert(sslctx, c);
+    }
+
+    cert_free(cert);
+    if (!sslctx) {
+        return NULL;
+    }
+    SSL *ssl = SSL_new(sslctx);
+    SSL_ctx_free(sslctx); /* SSL_new() increments refcount */
+    if (!ssl) {
+        return NULL;
+    }
+    return ssl;
+}
+
 int main()
 {
+    // TODO load the ssl channel certificate and key for ssl_channel, public key
+    // generation for ssl key
     SSL_library_init();
     OpenSSL_add_ssl_algorithms();
     SSL_load_error_strings();
@@ -174,6 +208,7 @@ int main()
             if (index < channel->conns) {
                 proxy = channel->proxies[index];
             } else {
+                // TODO modify the interface new index?
                 proxy = proxy_new(index);
                 channel->proxies[index] = proxy;
                 channel->conns++;
@@ -210,26 +245,23 @@ int main()
             // has a record for ssl server, either do handshake or forward the
             // msg.
             // server in_bio has some data to process;
-            if (!SSL_is_init_finished(proxy->serv_ssl)) {
-                SSL_do_handshake(proxy->serv_ssl);
-                proxy->server_need_to_out = 1;
-
-                if (!proxy->client_handshake_begin) {
-                    // initiate client handshake.
-                    SSL_do_handshake(proxy->cli_ssl);
-                    proxy->client_need_to_out = 1;
-                    proxy->client_handshake_begin = 1;
-                    // now the record is in the out_bio of client ssl and
-                    // proxy->serv_ssl
-                    // we need to copy it to the shared memory
-                }
-            } else {
-                printf("server side handshake is done.");
-                printf("begin forward ssl record to client\n");
-                forward_record(proxy->serv_ssl, proxy->cli_ssl);
+            if (!proxy->client_handshake_begin) {
+                // initiate client handshake.
+                SSL_do_handshake(proxy->cli_ssl);
                 proxy->client_need_to_out = 1;
+                proxy->client_handshake_begin = 1;
+            } else if (proxy->client_handshake_done) {
+                if (!SSL_is_init_finished(proxy->serv_ssl)) {
+                    SSL_do_handshake(proxy->serv_ssl);
+                    proxy->server_need_to_out = 1;
+                } else {
+                    printf("server side handshake is done.");
+                    printf("begin forward ssl record to client\n");
+                    forward_record(proxy->serv_ssl, proxy->cli_ssl);
+                    proxy->client_need_to_out = 1;
+                }
+                proxy->server_received = 0;
             }
-            proxy->server_received = 0;
         }
         if (proxy->client_received) {
             // client bio has some data to process;
@@ -240,6 +272,7 @@ int main()
                     proxy->client_need_to_out = 1;
                 } else {
                     proxy->client_handshake_done = 1;
+                    setup_proxy_server_ssl(proxy);
                     printf("client handshake is done");
                 }
             } else {

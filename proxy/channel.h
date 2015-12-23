@@ -4,11 +4,16 @@
 
 struct ssl_channel {
     int conns;
+    X509 *cacrt;      // store the cacrt for all server ssl connection
+    EVP_PKEY *cakey;  // store the ca key
+    EVP_PKEY *key;    // store the public key for all fake certificate.
     struct proxy *proxies[MAXCONNS];
     struct shm_ctx_t *shm_ctx;
 };
 
 struct proxy {
+    struct ssl_channel *ctx;
+    X509 *origcrt;
     int index;
     SSL *cli_ssl;
     SSL *serv_ssl;
