@@ -7,6 +7,9 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include "channel.h"
+#include "ssl.h"
+#include "cachemgr.h"
+#include "cert.h"
 
 #define CHK_NULL(x) if ((x)==NULL) exit (1)
 #define CHK_ERR(err,s) if ((err)==-1) { perror(s); exit(1); }
@@ -89,54 +92,140 @@ forward_record(SSL *from, SSL *to) {
 struct proxy *
 proxy_new(struct ssl_channel *ctx) {
     struct proxy *proxy = malloc(sizeof(struct proxy));
-    proxy->index = ctx->conns++;
     proxy->client_handshake_begin = 0;
     proxy->client_handshake_done = 0;
-    SSL_CTX* ctx;
+    SSL_CTX* sslctx;
     const SSL_METHOD *meth;
     meth = TLSv1_2_method();
-    ctx = SSL_CTX_new (meth);
+    sslctx = SSL_CTX_new (meth);
     // now we ban begin initialize the client side.
 
-    proxy->cli_ssl = SSL_new(ctx);                         CHK_NULL(proxy->cli_ssl);
+    proxy->cli_ssl = SSL_new(sslctx);                         CHK_NULL(proxy->cli_ssl);
 
     init_ssl_bio(proxy->cli_ssl);
     SSL_set_connect_state(proxy->cli_ssl);
 
-    SSL_CTX_free(ctx);
+    SSL_CTX_free(sslctx);
 
     return proxy;
 }
 
-void
-setup_proxy_server_ssl(struct proxy *proxy) {
-    proxy->serv_ssl = create_proxy_server_ssl(proxy);
-    init_ssl_bio(proxy->serv_ssl);
-    SSL_set_accept_state(proxy->serv_ssl);
+// OpenSSL create the session when the handshake is finished.
+// Of course, you need the premaster key.
+/*
+ * Called by OpenSSL when a new src SSL session is created.
+ * OpenSSL increments the refcount before calling the callback and will
+ * decrement it again if we return 0.  Returning 1 will make OpenSSL skip
+ * the refcount decrementing.  In other words, return 0 if we did not
+ * keep a pointer to the object (which we never do here).
+ */
+#ifdef WITH_SSLV2
+#define MAYBE_UNUSED
+#else /* !WITH_SSLV2 */
+#define MAYBE_UNUSED UNUSED
+#endif /* !WITH_SSLV2 */
+static int
+pxy_ossl_sessnew_cb(MAYBE_UNUSED SSL *ssl, SSL_SESSION *sess)
+#undef MAYBE_UNUSED
+{
+#ifdef DEBUG_SESSION_CACHE
+	log_dbg_printf("===> OpenSSL new session callback:\n");
+	if (sess) {
+		log_dbg_print_free(ssl_session_to_str(sess));
+	} else {
+		log_dbg_print("(null)\n");
+	}
+#endif /* DEBUG_SESSION_CACHE */
+#ifdef WITH_SSLV2
+	/* Session resumption seems to fail for SSLv2 with protocol
+	 * parsing errors, so we disable caching for SSLv2. */
+	if (SSL_version(ssl) == SSL2_VERSION) {
+		log_err_printf("Warning: Session resumption denied to SSLv2"
+		               "client.\n");
+		return 0;
+	}
+#endif /* WITH_SSLV2 */
+	if (sess) {
+		cachemgr_ssess_set(sess);
+	}
+	return 0;
 }
 
-SSL *
-create_proxy_server_ssl(struct proxy *proxy) {
-	cert_t *cert;
+/*
+ * Called by OpenSSL when a src SSL session should be removed.
+ * OpenSSL calls SSL_SESSION_free() after calling the callback;
+ * we do not need to free the reference here.
+ */
+static void
+pxy_ossl_sessremove_cb(UNUSED SSL_CTX *sslctx, SSL_SESSION *sess)
+{
+#ifdef DEBUG_SESSION_CACHE
+	log_dbg_printf("===> OpenSSL remove session callback:\n");
+	if (sess) {
+		log_dbg_print_free(ssl_session_to_str(sess));
+	} else {
+		log_dbg_print("(null)\n");
+	}
+#endif /* DEBUG_SESSION_CACHE */
+	if (sess) {
+		cachemgr_ssess_del(sess);
+	}
+}
 
-	proxy->origcrt = SSL_get_peer_certificate(proxy->cli_ssl);
+/*
+ * Called by OpenSSL when a src SSL session is requested by the client.
+ */
+static SSL_SESSION *
+pxy_ossl_sessget_cb(UNUSED SSL *ssl, unsigned char *id, int idlen, int *copy)
+{
+	SSL_SESSION *sess;
 
-			cert->crt = ssl_x509_forge(proxy->ctx->cacrt,
-			                           proxy->ctx->cakey,
-			                           proxy->origcrt, NULL,
-			                           proxy->ctx->key);
-		cert_set_key(cert, ctx->opts->key);
-		cert_set_chain(cert, ctx->opts->chain);
-	if (!cert)
-		return NULL;
+#ifdef DEBUG_SESSION_CACHE
+	log_dbg_printf("===> OpenSSL get session callback:\n");
+#endif /* DEBUG_SESSION_CACHE */
 
-	SSL_CTX *sslctx = SSL_CTX_new(TLSv1_2_method());
+	*copy = 0; /* SSL should not increment reference count of session */
+	sess = cachemgr_ssess_get(id, idlen);
+
+#ifdef DEBUG_SESSION_CACHE
+	if (sess) {
+		log_dbg_print_free(ssl_session_to_str(sess));
+	}
+#endif /* DEBUG_SESSION_CACHE */
+
+	return sess;
+}
+
+/*
+ * Create and set up a new SSL_CTX instance for terminating SSL.
+ * Set up all the necessary callbacks, the certificate, the cert chain and key.
+ */
+static SSL_CTX *
+pxy_srcsslctx_create(struct proxy *ctx, X509 *crt, STACK_OF(X509) *chain,
+                     EVP_PKEY *key)
+{
+    SSL_CTX *sslctx = SSL_CTX_new(TLSv1_2_method());
 	if (!sslctx)
 		return NULL;
 	SSL_CTX_set_options(sslctx, SSL_OP_ALL);
+#ifdef SSL_OP_TLS_ROLLBACK_BUG
+	SSL_CTX_set_options(sslctx, SSL_OP_TLS_ROLLBACK_BUG);
+#endif /* SSL_OP_TLS_ROLLBACK_BUG */
+#ifdef SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION
+	SSL_CTX_set_options(sslctx, SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION);
+#endif /* SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION */
+#ifdef SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS
+	SSL_CTX_set_options(sslctx, SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS);
+#endif /* SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS */
+#ifdef SSL_OP_NO_TICKET
+	SSL_CTX_set_options(sslctx, SSL_OP_NO_TICKET);
+#endif /* SSL_OP_NO_TICKET */
+#ifdef SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION
+	SSL_CTX_set_options(sslctx,
+	                    SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
+#endif /* SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION */
 
-
-	SSL_CTX_set_cipher_list(sslctx, ctx->opts->ciphers);
+	/*SSL_CTX_set_cipher_list(sslctx, ctx->opts->ciphers);*/
 	SSL_CTX_sess_set_new_cb(sslctx, pxy_ossl_sessnew_cb);
 	SSL_CTX_sess_set_remove_cb(sslctx, pxy_ossl_sessremove_cb);
 	SSL_CTX_sess_set_get_cb(sslctx, pxy_ossl_sessget_cb);
@@ -153,32 +242,72 @@ create_proxy_server_ssl(struct proxy *proxy) {
 		ssl_x509_refcount_inc(c); /* next call consumes a reference */
 		SSL_CTX_add_extra_chain_cert(sslctx, c);
 	}
+	return sslctx;
+}
 
-	cert_free(cert);
-	if (!sslctx) {
+SSL *
+create_proxy_server_ssl(struct proxy *proxy) {
+	cert_t *cert;
+    X509 *origcrt;
+
+    cert = cert_new();
+	origcrt = SSL_get_peer_certificate(proxy->cli_ssl);
+    cert->crt = cachemgr_fkcrt_get(origcrt);
+    if (!cert->crt) {
+        cert->crt = ssl_x509_forge(proxy->ctx->cacrt,
+                                   proxy->ctx->cakey,
+                                   origcrt, NULL,
+                                   proxy->ctx->key);
+    }
+    X509_free(origcrt);
+    cert_set_key(cert, proxy->ctx->key);
+    cert_set_chain(cert, proxy->ctx->chain);
+	if (!cert)
 		return NULL;
-	}
+
+	SSL_CTX *sslctx = pxy_srcsslctx_create(proxy, cert->crt, cert->chain,
+	                                       cert->key);
+	cert_free(cert);
+	if (!sslctx)
+		return NULL;
 	SSL *ssl = SSL_new(sslctx);
-	SSL_ctx_free(sslctx); /* SSL_new() increments refcount */
+	SSL_CTX_free(sslctx); /* SSL_new() increments refcount */
 	if (!ssl) {
 		return NULL;
 	}
 	return ssl;
 }
 
+void
+setup_proxy_server_ssl(struct proxy *proxy) {
+    proxy->serv_ssl = create_proxy_server_ssl(proxy);
+    init_ssl_bio(proxy->serv_ssl);
+    SSL_set_accept_state(proxy->serv_ssl);
+}
+
+struct ssl_channel *
+create_channel_ctx(const char *certf, const char *keyf) {
+    struct ssl_channel *channel = malloc(sizeof(struct ssl_channel));
+    channel->shm_ctx = malloc(sizeof(struct shm_ctx_t));
+    init_shm(channel->shm_ctx);
+    channel->conns = 0;
+    channel->cacrt = ssl_x509_load(certf);
+    ssl_x509_refcount_inc(channel->cacrt);
+    sk_X509_insert(channel->chain, channel->cacrt, 0);
+    channel->cakey = ssl_key_load(keyf);
+    channel->key = ssl_key_genrsa(1024);
+
+    return channel;
+}
+
 int main ()
 {
-    // TODO load the ssl channel certificate and key for ssl_channel, public key generation for ssl key
     SSL_library_init();
     OpenSSL_add_ssl_algorithms();
     SSL_load_error_strings();
     ERR_load_BIO_strings();
 
-    struct ssl_channel *channel = malloc(sizeof(struct ssl_channel));
-    channel->shm_ctx = malloc(sizeof(struct shm_ctx_t));
-    init_shm(channel->shm_ctx);
-    channel->conns = 0;
-
+    struct ssl_channel *channel = create_channel_ctx(CERTF, KEYF);
     char *shm_up = channel->shm_ctx->shm_up;
     char *shm_down = channel->shm_ctx->shm_down;
     struct proxy *proxy;
@@ -195,10 +324,22 @@ int main ()
             if (index < channel->conns) {
                 proxy = channel->proxies[index];
             } else {
-                // TODO modify the interface new index?
-                proxy = proxy_new(index);
-                channel->proxies[index] = proxy;
-                channel->conns ++;
+                // that means a new clienthello is coming. must be the server side.
+                if (1 == *((int *)shm_up)) {
+                    // actually this index = conns ++; used as a sync variable.
+                    char * buf = shm_up + sizeof(int);
+                    size_t length = *((size_t *) buf);
+                    buf += sizeof(size_t);
+                    proxy = proxy_new(channel);
+                    proxy->index = index;
+                    proxy->sni = ssl_tls_clienthello_parse_sni(buf, &length);
+                    // TODO check the msg
+                    channel->proxies[index] = proxy;
+                    channel->conns ++;
+
+                } else {
+                    printf("Not server hello message, wrong!\n");
+                }
             }
             int server = *((int *)shm_up);
             // determine send to client side or server side.
@@ -246,6 +387,12 @@ int main ()
                     proxy->client_need_to_out = 1;
                 }
                 proxy->server_received = 0;
+            } else {
+                // this means client handshake began bt not finished.
+                // but receive another server msg. wrong. or maybe another client hello msg.
+                // TODO ignore the duplicate handshake msg.
+                printf("Client handshake not finished yet! Wrong!\n");
+                exit(1);
             }
         }
         if (proxy->client_received) {
@@ -255,9 +402,11 @@ int main ()
                 if (r < 0) {// handshake not finished, need to send down the msg
                     proxy->client_need_to_out = 1;
                 } else {
+                    printf("client handshake is done\n");
                     proxy->client_handshake_done = 1;
                     setup_proxy_server_ssl(proxy);
-                     printf("client handshake is done");
+                    SSL_do_handshake(proxy->serv_ssl);
+                    proxy->server_need_to_out = 1;
                 }
             } else {
                 printf("begin forward client data to server.\n");
