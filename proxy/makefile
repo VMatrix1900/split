@@ -6,7 +6,7 @@ tcp: TCP_layer.c
 	gcc -g -o $(BINDIR)/tcp $(BUILDDIR)/tcp.o -levent -lpthread
 
 ssl: SSL_proxy.c
-	gcc -Wall -g -o $(BINDIR)/ssl SSL_proxy.c -lssl -lcrypto -lpthread
+	gcc -Wall -std=c99 -g -o $(BINDIR)/ssl $^ $(BUILDDIR)/*.o -lssl -lcrypto -lpthread
 
 run_tcp: tcp
 	$(BINDIR)/tcp

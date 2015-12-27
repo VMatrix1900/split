@@ -337,12 +337,13 @@ int main()
                 // side.
                 if (1 == *((int *)shm_up)) {
                     // actually this index = conns ++; used as a sync variable.
-                    char *buf = shm_up + sizeof(int);
+                    unsigned char *buf = (unsigned char *)shm_up + sizeof(int);
                     size_t length = *((size_t *)buf);
                     buf += sizeof(size_t);
                     proxy = proxy_new(channel);
                     proxy->index = index;
-                    proxy->sni = ssl_tls_clienthello_parse_sni(buf, &length);
+                    proxy->sni =
+                        ssl_tls_clienthello_parse_sni(buf, (ssize_t *)&length);
                     // TODO check the msg
                     channel->proxies[index] = proxy;
                     channel->conns++;
