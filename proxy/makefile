@@ -1,7 +1,7 @@
 BINDIR := ../bin
 BUILDDIR := ../build
 CC := gcc
-CFLAGS := -g -Wall -std=c99
+CFLAGS := -g -Wall -std=c99 -D DEBUG_SNI_PARSER
 SRCS := $(wildcard *.c)
 OBJS := $(SRCS:.c=.o)
 
