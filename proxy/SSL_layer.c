@@ -76,45 +76,6 @@ init_ssl_bio(SSL *ssl){
     return 0;
 }
 
-// TODO dealing with want read or want write.
-void
-forward_record(SSL *from, SSL *to) {
-    char buf[BUFSZ];
-    int length = SSL_read(from, buf, BUFSZ);
-    if (length <= 0) {
-        switch (SSL_get_error(from, length)) {
-            case SSL_ERROR_WANT_WRITE:
-                // TODO rehandshake !!
-                return;
-                break;
-            case SSL_ERROR_WANT_READ:
-                // read fail, can not forward
-                return;
-            case SSL_ERROR_ZERO_RETURN:
-                // ssl closed
-                return;
-            default :
-                perror("Forward error!");
-                exit(1);
-        }
-    }
-    int r = SSL_write(to, buf, length);
-    if (r <= 0) {
-        switch (SSL_get_error(to, r)) {
-            case SSL_ERROR_WANT_READ:
-                // TODO handle rehandshake;
-                break;
-            case SSL_ERROR_ZERO_RETURN:
-                // ssl closed
-                return;
-            case SSL_ERROR_WANT_WRITE:
-                // TODO will this happen? we have unlimited bio memory buffer
-                perror("BIO memory buffer full");
-                exit(1);
-        }
-    }
-}
-
 struct proxy *
 proxy_new(struct ssl_channel *ctx) {
     struct proxy *proxy = malloc(sizeof(struct proxy));
@@ -136,6 +97,64 @@ proxy_new(struct ssl_channel *ctx) {
     SSL_CTX_free(sslctx);
 
     return proxy;
+}
+
+void
+notify_tcp() {
+
+}
+
+void
+proxy_shutdown_free(struct proxy *proxy) {
+    if (0 == SSL_get_shutdown(proxy->cli_ssl)) {
+        SSL_shutdown(proxy->cli_ssl);
+        // TODO send down the shutdown alert
+        notify_tcp();
+    }
+    if (0 == SSL_get_shutdown(proxy->serv_ssl)) {
+        SSL_shutdown(proxy->serv_ssl);
+        notify_tcp();
+    }
+    free(proxy);
+}
+void
+forward_record(SSL *from, SSL *to, struct proxy *proxy) {
+    char buf[BUFSZ];
+    int length = SSL_read(from, buf, BUFSZ);
+    if (length <= 0) {
+        switch (SSL_get_error(from, length)) {
+            case SSL_ERROR_WANT_WRITE:
+                // TODO rehandshake !!
+                return;
+                break;
+            case SSL_ERROR_WANT_READ:
+                // read fail, can not forward
+                return;
+            case SSL_ERROR_ZERO_RETURN:
+                // ssl clean closed
+                proxy_shutdown_free(proxy);
+                return;
+            default :
+                perror("Forward error!");
+                exit(1);
+        }
+    }
+    int r = SSL_write(to, buf, length);
+    if (r <= 0) {
+        switch (SSL_get_error(to, r)) {
+            case SSL_ERROR_WANT_READ:
+                // TODO handle rehandshake;
+                break;
+            case SSL_ERROR_ZERO_RETURN:
+                // ssl closed
+                proxy_shutdown_free(proxy);
+                return;
+            case SSL_ERROR_WANT_WRITE:
+                // TODO will this happen? we have unlimited bio memory buffer
+                perror("BIO memory buffer full");
+                exit(1);
+        }
+    }
 }
 
 // OpenSSL create the session when the handshake is finished.
@@ -287,6 +306,7 @@ create_proxy_server_ssl(struct proxy *proxy) {
                                    origcrt, NULL,
                                    proxy->ctx->key);
     }
+    cachemgr_fkcrt_set(origcrt, cert->crt);
     X509_free(origcrt);
     cert_set_key(cert, proxy->ctx->key);
     cert_set_chain(cert, proxy->ctx->chain);
@@ -410,7 +430,7 @@ int main ()
                         proxy->server_handshake_done = true;
                     }
                 } else if (proxy->server_handshake_done) {
-                    forward_record(proxy->serv_ssl, proxy->cli_ssl);
+                    forward_record(proxy->serv_ssl, proxy->cli_ssl, proxy);
                 }
             } else if (0 == server) {
                 shm_up = receive_up(proxy->cli_ssl, shm_up);
@@ -438,7 +458,7 @@ int main ()
                 } else if (!proxy->server_handshake_done) {
                     // dst server push to client but server side ssl isn't ready
                 } else {
-                    forward_record(proxy->cli_ssl, proxy->serv_ssl);
+                    forward_record(proxy->cli_ssl, proxy->serv_ssl, proxy);
                 }
             } else {
                 printf("Wrong server indicator:%d\n", server);

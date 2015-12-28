@@ -16,14 +16,3 @@ struct proxy_ctx {
     struct event *timer;
     struct event_base *base;
 };
-
-void
-proxy_ctx_free(struct pxy_conn *ctx){
-    if (!ctx->cli_bev) {
-        free(ctx->cli_bev);
-    }
-    if (!ctx->serv_bev) {
-        free(ctx->serv_bev);
-    }
-    free(ctx);
-}
