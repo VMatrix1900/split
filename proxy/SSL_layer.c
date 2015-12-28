@@ -22,21 +22,24 @@
 #define KEYF  HOME  "server-key.pem"
 
 // send the ssl out_bio packet to shared memory, update the pointer.
-unsigned char *
-send_down(SSL *ssl, unsigned char *shm, int server) {
-    memcpy(shm, &server, sizeof(int));
-    shm += sizeof(int);
+void
+send_down(struct proxy *proxy, int server) {
+    SSL *ssl = (server == 0) ? proxy->cli_ssl : proxy->serv_ssl;
     BIO* out_bio = SSL_get_wbio(ssl);
-    /* begin send_down the packet to shared memory */
     size_t pending = BIO_ctrl_pending(out_bio);
     if (pending > 0) {
-        memcpy(shm, &pending, sizeof(size_t));
-        shm += sizeof(size_t);
-        int read = BIO_read(out_bio, shm, pending);
+        /* begin send_down the packet to shared memory */
+        memcpy(proxy->down_pointer, &proxy->index, sizeof(int));
+        proxy->down_pointer += sizeof(int);
+        memcpy(proxy->down_pointer, &server, sizeof(int));
+        proxy->down_pointer += sizeof(int);
+        memcpy(proxy->down_pointer, &pending, sizeof(size_t));
+        proxy->down_pointer += sizeof(size_t);
+        int read = BIO_read(out_bio, proxy->down_pointer, pending);
         printf("send_down the packet completed. packet size is: %d\n", read);
-        shm += read;
+        proxy->down_pointer += read;
+        proxy->msgs_need_to_out += 1;
     }
-    return shm;
 }
 
 // receive the ssl in_bio packet from shared memory, update the pointer.
@@ -83,6 +86,7 @@ proxy_new(struct ssl_channel *ctx) {
     proxy->client_handshake_done = false;
     proxy->server_handshake_done = false;
     proxy->hello_msg_length = 0;
+    proxy->msgs_need_to_out = 0;
     // TODO separate this part out to a function.
     SSL_CTX* sslctx;
     const SSL_METHOD *meth;
@@ -118,6 +122,7 @@ proxy_shutdown_free(struct proxy *proxy) {
     }
     free(proxy);
 }
+
 void
 forward_record(SSL *from, SSL *to, struct proxy *proxy) {
     char buf[BUFSZ];
@@ -155,6 +160,9 @@ forward_record(SSL *from, SSL *to, struct proxy *proxy) {
                 perror("BIO memory buffer full");
                 exit(1);
         }
+    } else {
+         // we need to send down the msg;
+        send_down(proxy, (to == proxy->cli_ssl) ? 0 : 1);
     }
 }
 
@@ -368,7 +376,7 @@ peek_hello_msg(struct proxy *proxy, unsigned char *msg) {
         }
         SSL_do_handshake(proxy->cli_ssl);
         // TODO check the code make sure it's want write
-        proxy->client_need_to_out = 1;
+        send_down(proxy, 0);
     }
 }
 
@@ -414,10 +422,10 @@ int main ()
                 } else if (proxy->client_handshake_done && !proxy->server_handshake_done) {
                     shm_up = receive_up(proxy->serv_ssl, shm_up);
                     int r = SSL_do_handshake(proxy->serv_ssl);
+                    send_down(proxy, 1);
                     if (r < 0) {
                         switch (SSL_get_error(proxy->serv_ssl, r)) {
                             case SSL_ERROR_WANT_WRITE:
-                                proxy->server_need_to_out = 1;
                                 break;
                             case SSL_ERROR_WANT_READ:
                                 // need more data, do nothing;
@@ -426,8 +434,7 @@ int main ()
                                 perror("Server handshake error!");
                         }
                     } else {
-                        // handshake is done, we still need to send down
-                        proxy->server_need_to_out = 1;
+                        // handshake is done
                         proxy->server_handshake_done = true;
                     }
                 } else if (proxy->server_handshake_done) {
@@ -438,9 +445,9 @@ int main ()
                 if(!proxy->client_handshake_done) {
                     int r = SSL_do_handshake(proxy->cli_ssl);
                     if (r < 0) {
+                        send_down(proxy, 0);
                         switch (SSL_get_error(proxy->cli_ssl, r)) {
                             case SSL_ERROR_WANT_WRITE:
-                                proxy->client_need_to_out = 1;
                                 break;
                             case SSL_ERROR_WANT_READ:
                                 // need more data, do nothing;
@@ -458,7 +465,7 @@ int main ()
                                 proxy->hello_msg_length);
                         SSL_do_handshake(proxy->serv_ssl);
                         // TODO make sure it's want write
-                        proxy->server_need_to_out = 1;
+                        send_down(proxy, 1);
                     }
                 } else if (!proxy->server_handshake_done) {
                     // dst server push to client but server side ssl isn't ready
@@ -473,32 +480,16 @@ int main ()
 
         // all record has been read into the SSL in_bio, now we can release the write lock
         sem_post(channel->shm_ctx->write_lock);
-        // do handshake or forward.
 
         // now we finish the SSL record process; begin to send down the record.
-        int num = proxy->server_need_to_out + proxy->client_need_to_out;
-        memcpy(shm_down, &num, sizeof(int));
-        shm_down += sizeof(int);
-        if (proxy->server_need_to_out) {
-            printf("server side send down\n");
-            memcpy(shm_down, &proxy->index, sizeof(int));
-            shm_down += sizeof(int);
-            shm_down = send_down(proxy->serv_ssl, shm_down, 1);
-            proxy->server_need_to_out = 0;
-        }
-        if (proxy->client_need_to_out) {
-            printf("client side send down\n");
-            memcpy(shm_down, &proxy->index, sizeof(int));
-            shm_down += sizeof(int);
-            shm_down = send_down(proxy->cli_ssl, shm_down, 0);
-            proxy->client_need_to_out = 0;
-        }
-
         // reset the shm pointer
         shm_up = channel->shm_ctx->shm_up;
-        shm_down = channel->shm_ctx->shm_down;
-
-        sem_post(channel->shm_ctx->down);
+        if (proxy->msgs_need_to_out) {
+            memcpy(shm_down, &proxy->msgs_need_to_out, sizeof(int));
+            shm_down += sizeof(int);
+            shm_down = channel->shm_ctx->shm_down;
+            sem_post(channel->shm_ctx->down);
+        }
     }
 
     return 0;
