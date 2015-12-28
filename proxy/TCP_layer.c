@@ -43,7 +43,7 @@ void copydata(evutil_socket_t fd, short what, void *ptr)
 {
     // globol timer trigger this one ptr is proxy_ctx
     struct proxy_ctx *ctx = (struct proxy_ctx *)ptr;
-    char *shm = ctx->shm_ctx->shm_down;
+    unsigned char *shm = ctx->shm_ctx->shm_down;
     struct bufferevent *bev;
     struct pxy_conn *conn;
     event_del(ctx->timer);
@@ -82,7 +82,7 @@ void readcb(struct bufferevent *bev, void *ptr, int server)
     // only when the data is processed by ssl process
     struct pxy_conn *ctx = (struct pxy_conn *)ptr;
     // when packet arrived, just copy it from input buffer to shared memory.
-    char *shm = ctx->shm_ctx->shm_up;
+    unsigned char *shm = ctx->shm_ctx->shm_up;
     // get the write lock
     sem_wait(ctx->shm_ctx->write_lock);
     // TODO only send 1 packet 1 time?

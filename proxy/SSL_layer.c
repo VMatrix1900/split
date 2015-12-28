@@ -32,7 +32,7 @@
 #define KEYF HOME "server-key.pem"
 
 // send the ssl out_bio packet to shared memory, update the pointer.
-char *send_down(SSL *ssl, char *shm, int server)
+unsigned char *send_down(SSL *ssl, unsigned char *shm, int server)
 {
     memcpy(shm, &server, sizeof(int));
     shm += sizeof(int);
@@ -50,7 +50,7 @@ char *send_down(SSL *ssl, char *shm, int server)
 }
 
 // receive the ssl in_bio packet from shared memory, update the pointer.
-char *receive_up(SSL *ssl, char *shm)
+unsigned char *receive_up(SSL *ssl, unsigned char *shm)
 {
     BIO *in_bio = SSL_get_rbio(ssl);
     /*printf("begin receive up msg. The size is %zu\n", *((size_t
@@ -97,6 +97,7 @@ struct proxy *proxy_new(struct ssl_channel *ctx)
     proxy->SNI_parsed = false;
     proxy->client_handshake_done = false;
     proxy->server_handshake_done = false;
+    proxy->hello_msg_length = 0;
     // TODO separate this part out to a function.
     SSL_CTX *sslctx;
     const SSL_METHOD *meth;
@@ -352,18 +353,19 @@ struct ssl_channel *create_channel_ctx(const char *certf, const char *keyf)
     return channel;
 }
 
-void peek_hello_msg(struct proxy *proxy, char *msg)
+void peek_hello_msg(struct proxy *proxy, unsigned char *msg)
 {
-    proxy->hello_msg_length = *(size_t *)msg;
+    size_t size = *(size_t *)msg;
     msg += sizeof(size_t);
+    memcpy(proxy->client_hello_buf + proxy->hello_msg_length, msg, size);
+    proxy->hello_msg_length += size;
     ssize_t length = proxy->hello_msg_length;
-    memcpy(proxy->client_hello_buf, msg, proxy->hello_msg_length);
     proxy->sni =
         ssl_tls_clienthello_parse_sni(proxy->client_hello_buf, &length);
     if (!proxy->sni && (-1 == length)) {
         // client hello msg is incomplete. set the flag, wait for another msg.
     } else {
-        // sni parse is finished.
+        // sni parse is finished. we can only initiate client handshake;
         proxy->SNI_parsed = true;
         if (proxy->sni) {
             SSL_set_tlsext_host_name(proxy->cli_ssl, proxy->sni);
@@ -382,8 +384,8 @@ int main()
     ERR_load_BIO_strings();
 
     struct ssl_channel *channel = create_channel_ctx(CERTF, KEYF);
-    char *shm_up = channel->shm_ctx->shm_up;
-    char *shm_down = channel->shm_ctx->shm_down;
+    unsigned char *shm_up = channel->shm_ctx->shm_up;
+    unsigned char *shm_down = channel->shm_ctx->shm_down;
     struct proxy *proxy;
 
     while (!sem_wait(channel->shm_ctx->up)) {
@@ -412,13 +414,12 @@ int main()
             shm_up += sizeof(int);
             if (1 == server) {
                 // first we need to copy the data to ssl in_bio.
-                char *buf = shm_up;  // save for later peek;
-                shm_up = receive_up(proxy->serv_ssl, shm_up);
                 // mark from server side.
                 if (!proxy->SNI_parsed) {
-                    peek_hello_msg(proxy, buf);
+                    peek_hello_msg(proxy, shm_up);
                 } else if (proxy->client_handshake_done &&
                            !proxy->server_handshake_done) {
+                    shm_up = receive_up(proxy->serv_ssl, shm_up);
                     int r = SSL_do_handshake(proxy->serv_ssl);
                     if (r < 0) {
                         switch (SSL_get_error(proxy->serv_ssl, r)) {
@@ -458,6 +459,10 @@ int main()
                         printf("client handshake is done\n");
                         proxy->client_handshake_done = true;
                         setup_proxy_server_ssl(proxy);
+                        // copy the hello msg from buffer to bio;
+                        BIO_write(SSL_get_rbio(proxy->serv_ssl),
+                                  proxy->client_hello_buf,
+                                  proxy->hello_msg_length);
                         SSL_do_handshake(proxy->serv_ssl);
                         // TODO make sure it's want write
                         proxy->server_need_to_out = 1;

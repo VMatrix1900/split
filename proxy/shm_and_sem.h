@@ -19,8 +19,8 @@ struct shm_ctx_t {
     sem_t *write_lock;
     int shmid_up;
     int shmid_down;
-    char *shm_up;
-    char *shm_down;
+    unsigned char *shm_up;
+    unsigned char *shm_down;
 };
 
 int init_shm(struct shm_ctx_t *shm_ctx)
