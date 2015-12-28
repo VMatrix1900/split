@@ -127,22 +127,26 @@ void writecb(struct bufferevent *bev, void *ptr)
     printf("packet send to network layer\n");
 }
 
-void serv_eventcb(struct bufferevent *bev, short events, void *ptr)
+void proxy_ctx_free(struct pxy_conn *ctx)
 {
-    if (events & BEV_EVENT_ERROR) {
-        perror("error from server buffer event");
+    if (!ctx->cli_bev) {
+        bufferevent_free(ctx->cli_bev);
     }
-    if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-        bufferevent_free(bev);
+    if (!ctx->serv_bev) {
+        bufferevent_free(ctx->serv_bev);
     }
+    free(ctx);
 }
 
-void cli_eventcb(struct bufferevent *bev, short events, void *ptr)
+void eventcb(struct bufferevent *bev, short events, void *ptr)
 {
     if (events & BEV_EVENT_CONNECTED) {
         printf("client socket: connected\n");
     } else if (events & BEV_EVENT_ERROR) {
         /* An error occured while connecting. */
+    } else if (events & BEV_EVENT_EOF) {
+        // socket is closed
+        proxy_ctx_free(ptr);
     }
 }
 
@@ -178,20 +182,20 @@ void accept_conn_cb(struct evconnlistener *listener, evutil_socket_t fd,
     struct event_base *base = evconnlistener_get_base(listener);
     ctx->serv_bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
 
-    bufferevent_setcb(ctx->serv_bev, serv_readcb, writecb, serv_eventcb, ctx);
+    bufferevent_setcb(ctx->serv_bev, serv_readcb, writecb, eventcb, ctx);
 
     bufferevent_enable(ctx->serv_bev, EV_READ | EV_WRITE);
 
     // then we setup client side socket.
     ctx->cli_bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 
-    bufferevent_setcb(ctx->cli_bev, cli_readcb, writecb, cli_eventcb, ctx);
+    bufferevent_setcb(ctx->cli_bev, cli_readcb, writecb, eventcb, ctx);
 
     if (bufferevent_socket_connect(ctx->cli_bev,
                                    (struct sockaddr *)&ctx->dstsock,
                                    ctx->dstsocklen) < 0) {
         /* Error starting connection */
-        bufferevent_free(ctx->cli_bev);
+        proxy_ctx_free(ctx);
         return;
     }
 
