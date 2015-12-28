@@ -26,33 +26,24 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef NAT_H
-#define NAT_H
+#ifndef LOG_H
+#define LOG_H
 
+#include <stddef.h>
 #include "attrib.h"
 
-#include <sys/socket.h>
-#include <sys/types.h>
+int log_err_printf(const char *, ...) PRINTF(1, 2);
+void log_err_mode(int);
+#define LOG_ERR_MODE_STDERR 0
+#define LOG_ERR_MODE_SYSLOG 1
 
-#include <event2/util.h>
+int log_dbg_printf(const char *, ...) PRINTF(1, 2);
+int log_dbg_print_free(char *);
+int log_dbg_write_free(void *, size_t);
+void log_dbg_mode(int);
+#define LOG_DBG_MODE_NONE 0
+#define LOG_DBG_MODE_ERRLOG 1
 
-typedef int (*nat_lookup_cb_t)(struct sockaddr *, socklen_t *, evutil_socket_t,
-                               struct sockaddr *, socklen_t);
-typedef int (*nat_socket_cb_t)(evutil_socket_t);
-
-int nat_exist(const char *) WUNRES;
-int nat_used(const char *) WUNRES;
-nat_lookup_cb_t nat_getlookupcb(const char *) WUNRES;
-nat_socket_cb_t nat_getsocketcb(const char *) WUNRES;
-int nat_ipv6ready(const char *) WUNRES;
-
-const char *nat_getdefaultname(void) WUNRES;
-void nat_list_engines(void);
-int nat_preinit(void) WUNRES;
-int nat_init(void) WUNRES;
-void nat_fini(void);
-void nat_version(void);
-
-#endif /* !NAT_H */
+#endif /* !LOG_H */
 
 /* vim: set noet ft=c: */

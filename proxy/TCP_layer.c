@@ -14,7 +14,7 @@
 #include <sys/types.h>
 #include <sys/types.h>
 
-#include "proxy.h"
+#include "TCP_layer.h"
 #include "shm_and_sem.h"
 
 int conns = 0;

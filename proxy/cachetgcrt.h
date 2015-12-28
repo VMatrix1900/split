@@ -29,6 +29,7 @@
 #ifndef CACHETGCRT_H
 #define CACHETGCRT_H
 
+#include <string.h>
 #include "attrib.h"
 #include "cache.h"
 #include "cert.h"

@@ -29,7 +29,6 @@
 #include "cache.h"
 
 #include "khash.h"
-#include "log.h"
 
 #include <pthread.h>
 
