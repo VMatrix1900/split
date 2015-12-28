@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <openssl/ssl.h>
 #include "shm_and_sem.h"
 #include "constants.h"
@@ -19,10 +20,11 @@ struct proxy {
     char * sni;
     SSL *cli_ssl;
     SSL *serv_ssl;
-    int client_handshake_begin;
-    int client_handshake_done;
-    int client_received;
-    int server_received;
+    unsigned char client_hello_buf[1024];
+    ssize_t hello_msg_length;
+    bool SNI_parsed;
+    bool client_handshake_done;
+    bool server_handshake_done;
     int client_need_to_out;
     int server_need_to_out;
 };

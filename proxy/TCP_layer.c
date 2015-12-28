@@ -15,7 +15,7 @@
 #include <linux/netfilter_ipv4.h>
 
 #include "shm_and_sem.h"
-#include "proxy.h"
+#include "TCP_layer.h"
 
 int conns = 0;
 

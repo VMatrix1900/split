@@ -6,7 +6,7 @@
 #include <fcntl.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#include "channel.h"
+#include "SSL_layer.h"
 #include "ssl.h"
 #include "cachemgr.h"
 #include "cert.h"
@@ -76,15 +76,41 @@ init_ssl_bio(SSL *ssl){
     return 0;
 }
 
+// TODO dealing with want read or want write.
 void
 forward_record(SSL *from, SSL *to) {
     char buf[BUFSZ];
     int length = SSL_read(from, buf, BUFSZ);
+    if (length <= 0) {
+        switch (SSL_get_error(from, length)) {
+            case SSL_ERROR_WANT_WRITE:
+                // TODO rehandshake !!
+                return;
+                break;
+            case SSL_ERROR_WANT_READ:
+                // read fail, can not forward
+                return;
+            case SSL_ERROR_ZERO_RETURN:
+                // ssl closed
+                return;
+            default :
+                perror("Forward error!");
+                exit(1);
+        }
+    }
     int r = SSL_write(to, buf, length);
-    if (r < 0) {
+    if (r <= 0) {
         switch (SSL_get_error(to, r)) {
             case SSL_ERROR_WANT_READ:
-                printf("want read more data, give up");
+                // TODO handle rehandshake;
+                break;
+            case SSL_ERROR_ZERO_RETURN:
+                // ssl closed
+                return;
+            case SSL_ERROR_WANT_WRITE:
+                // TODO will this happen? we have unlimited bio memory buffer
+                perror("BIO memory buffer full");
+                exit(1);
         }
     }
 }
@@ -92,8 +118,10 @@ forward_record(SSL *from, SSL *to) {
 struct proxy *
 proxy_new(struct ssl_channel *ctx) {
     struct proxy *proxy = malloc(sizeof(struct proxy));
-    proxy->client_handshake_begin = 0;
-    proxy->client_handshake_done = 0;
+    proxy->SNI_parsed = false;
+    proxy->client_handshake_done = false;
+    proxy->server_handshake_done = false;
+    // TODO separate this part out to a function.
     SSL_CTX* sslctx;
     const SSL_METHOD *meth;
     meth = TLSv1_2_method();
@@ -300,6 +328,28 @@ create_channel_ctx(const char *certf, const char *keyf) {
     return channel;
 }
 
+void
+peek_hello_msg(struct proxy *proxy, char *msg) {
+    proxy->hello_msg_length = *(size_t *)msg;
+    msg += sizeof(size_t);
+    ssize_t length = proxy->hello_msg_length;
+    memcpy(proxy->client_hello_buf, msg, proxy->hello_msg_length);
+    proxy->sni = ssl_tls_clienthello_parse_sni(proxy->client_hello_buf,
+                                                &length);
+    if (!proxy->sni && (-1 == length)) {
+        // client hello msg is incomplete. set the flag, wait for another msg.
+    } else {
+        // sni parse is finished.
+        proxy->SNI_parsed = true;
+        if (proxy->sni) {
+            SSL_set_tlsext_host_name(proxy->cli_ssl, proxy->sni);
+        }
+        SSL_do_handshake(proxy->cli_ssl);
+        // TODO check the code make sure it's want write
+        proxy->client_need_to_out = 1;
+    }
+}
+
 int main ()
 {
     SSL_library_init();
@@ -325,38 +375,71 @@ int main ()
                 proxy = channel->proxies[index];
             } else {
                 // that means a new clienthello is coming. must be the server side.
-                if (1 == *((int *)shm_up)) {
-                    // actually this index = conns ++; used as a sync variable.
-                    unsigned char * buf = (unsigned char *)shm_up + sizeof(int);
-                    size_t length = *((size_t *) buf);
-                    buf += sizeof(size_t);
-                    proxy = proxy_new(channel);
-                    proxy->index = index;
-                    proxy->sni = ssl_tls_clienthello_parse_sni(buf, (ssize_t *)&length);
-                    // TODO check the msg
-                    channel->proxies[index] = proxy;
-                    channel->conns ++;
-
-                } else {
-                    printf("Not server hello message, wrong!\n");
-                }
+                proxy = proxy_new(channel);
+                proxy->index = index;
+                channel->proxies[index] = proxy;
+                channel->conns ++;
+                // actually this index = conns ++; used as a sync variable.
             }
             int server = *((int *)shm_up);
             // determine send to client side or server side.
             shm_up += sizeof(int);
             if (1 == server) {
                 // first we need to copy the data to ssl in_bio.
-                // mark from server side.
-                proxy->server_received = 1;
-                printf("server side receive up");
+                char * buf = shm_up;// save for later peek;
                 shm_up = receive_up(proxy->serv_ssl, shm_up);
-
+                // mark from server side.
+                if (!proxy->SNI_parsed) {
+                    peek_hello_msg(proxy, buf);
+                } else if (proxy->client_handshake_done && !proxy->server_handshake_done) {
+                    int r = SSL_do_handshake(proxy->serv_ssl);
+                    if (r < 0) {
+                        switch (SSL_get_error(proxy->serv_ssl, r)) {
+                            case SSL_ERROR_WANT_WRITE:
+                                proxy->server_need_to_out = 1;
+                                break;
+                            case SSL_ERROR_WANT_READ:
+                                // need more data, do nothing;
+                                break;
+                            default :
+                                perror("Server handshake error!");
+                        }
+                    } else {
+                        // handshake is done, we still need to send down
+                        proxy->server_need_to_out = 1;
+                        proxy->server_handshake_done = true;
+                    }
+                } else if (proxy->server_handshake_done) {
+                    forward_record(proxy->serv_ssl, proxy->cli_ssl);
+                }
             } else if (0 == server) {
-                // do client staff
-                // has a record for ssl client, do handhshake or forward.
-                proxy->client_received = 1;
-                printf("client side receive up");
                 shm_up = receive_up(proxy->cli_ssl, shm_up);
+                if(!proxy->client_handshake_done) {
+                    int r = SSL_do_handshake(proxy->cli_ssl);
+                    if (r < 0) {
+                        switch (SSL_get_error(proxy->cli_ssl, r)) {
+                            case SSL_ERROR_WANT_WRITE:
+                                proxy->client_need_to_out = 1;
+                                break;
+                            case SSL_ERROR_WANT_READ:
+                                // need more data, do nothing;
+                                break;
+                            default :
+                                perror("Server handshake error!");
+                        }
+                    } else {
+                        printf("client handshake is done\n");
+                        proxy->client_handshake_done = true;
+                        setup_proxy_server_ssl(proxy);
+                        SSL_do_handshake(proxy->serv_ssl);
+                        // TODO make sure it's want write
+                        proxy->server_need_to_out = 1;
+                    }
+                } else if (!proxy->server_handshake_done) {
+                    // dst server push to client but server side ssl isn't ready
+                } else {
+                    forward_record(proxy->cli_ssl, proxy->serv_ssl);
+                }
             } else {
                 printf("Wrong server indicator:%d\n", server);
                 exit(1);
@@ -367,61 +450,11 @@ int main ()
         sem_post(channel->shm_ctx->write_lock);
         // do handshake or forward.
 
-        if (proxy->server_received) {
-            // do server side staff
-            // has a record for ssl server, either do handshake or forward the msg.
-            // server in_bio has some data to process;
-            if (!proxy->client_handshake_begin) {
-                // initiate client handshake.
-                SSL_do_handshake(proxy->cli_ssl);
-                proxy->client_need_to_out = 1;
-                proxy->client_handshake_begin = 1;
-            } else if (proxy->client_handshake_done) {
-                if(!SSL_is_init_finished(proxy->serv_ssl)) {
-                    SSL_do_handshake(proxy->serv_ssl);
-                    proxy->server_need_to_out = 1;
-                } else {
-                    printf("server side handshake is done.");
-                    printf("begin forward ssl record to client\n");
-                    forward_record(proxy->serv_ssl, proxy->cli_ssl);
-                    proxy->client_need_to_out = 1;
-                }
-                proxy->server_received = 0;
-            } else {
-                // this means client handshake began bt not finished.
-                // but receive another server msg. wrong. or maybe another client hello msg.
-                // TODO ignore the duplicate handshake msg.
-                printf("Client handshake not finished yet! Wrong!\n");
-                exit(1);
-            }
-        }
-        if (proxy->client_received) {
-            // client bio has some data to process;
-            if(!SSL_is_init_finished(proxy->cli_ssl)) {
-                int r = SSL_do_handshake(proxy->cli_ssl);
-                if (r < 0) {// handshake not finished, need to send down the msg
-                    proxy->client_need_to_out = 1;
-                } else {
-                    printf("client handshake is done\n");
-                    proxy->client_handshake_done = 1;
-                    setup_proxy_server_ssl(proxy);
-                    SSL_do_handshake(proxy->serv_ssl);
-                    proxy->server_need_to_out = 1;
-                }
-            } else {
-                printf("begin forward client data to server.\n");
-                forward_record(proxy->cli_ssl, proxy->serv_ssl);
-                proxy->server_need_to_out = 1;
-            }
-            proxy->client_received = 0;
-        }
-
-
         // now we finish the SSL record process; begin to send down the record.
-        int num = (proxy->client_handshake_done ? proxy->server_need_to_out : 0) + proxy->client_need_to_out;
+        int num = proxy->server_need_to_out + proxy->client_need_to_out;
         memcpy(shm_down, &num, sizeof(int));
         shm_down += sizeof(int);
-        if (proxy->client_handshake_done && proxy->server_need_to_out) {
+        if (proxy->server_need_to_out) {
             printf("server side send down\n");
             memcpy(shm_down, &proxy->index, sizeof(int));
             shm_down += sizeof(int);

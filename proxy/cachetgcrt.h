@@ -30,6 +30,7 @@
 #define CACHETGCRT_H
 
 #include "cache.h"
+#include <string.h>
 #include "attrib.h"
 #include "cert.h"
 
