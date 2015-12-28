@@ -25,6 +25,6 @@ struct proxy {
     bool SNI_parsed;
     bool client_handshake_done;
     bool server_handshake_done;
-    int client_need_to_out;
-    int server_need_to_out;
+    int msgs_need_to_out;
+    unsigned char *down_pointer;
 };
