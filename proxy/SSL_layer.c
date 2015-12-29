@@ -102,6 +102,7 @@ struct proxy *proxy_new(struct ssl_channel *ctx)
     proxy->server_handshake_done = false;
     proxy->hello_msg_length = 0;
     proxy->msgs_need_to_out = 0;
+    proxy->down_pointer = ctx->shm_ctx->shm_down + sizeof(int);
     // TODO separate this part out to a function.
     SSL_CTX *sslctx;
     const SSL_METHOD *meth;
@@ -495,7 +496,9 @@ int main()
         if (proxy->msgs_need_to_out) {
             memcpy(shm_down, &proxy->msgs_need_to_out, sizeof(int));
             shm_down += sizeof(int);
+            proxy->msgs_need_to_out = 0;
             shm_down = channel->shm_ctx->shm_down;
+            proxy->down_pointer = shm_down + sizeof(int);
             sem_post(channel->shm_ctx->down);
         }
     }
