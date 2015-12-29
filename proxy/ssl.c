@@ -36,7 +36,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <limits.h>
-#include <pthread.h>
 
 #include <openssl/crypto.h>
 #include <openssl/engine.h>
@@ -1600,7 +1599,7 @@ ssl_tls_clienthello_parse_sni(const unsigned char *buf, ssize_t *sz)
 #ifdef DEBUG_SNI_PARSER
 #define DBG_printf(...) log_dbg_printf("SNI Parser: " __VA_ARGS__)
 #else /* !DEBUG_SNI_PARSER */
-#define DBG_printf(...)
+#define DBG_printf(...) 
 #endif /* !DEBUG_SNI_PARSER */
 	const unsigned char *p = buf;
 	ssize_t n = *sz;

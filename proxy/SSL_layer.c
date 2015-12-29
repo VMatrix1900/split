@@ -16,10 +16,10 @@
 #define CHK_SSL(err) if ((err)==-1) { ERR_print_errors_fp(stderr); exit(2); }
 
 /* define HOME to be dir for key and cert files... */
-#define HOME "../SSLandTCP/"
+#define HOME "/home/vincent/Downloads/memory/proxy/"
 /* Make these what you want for cert & key files */
-#define CERTF  HOME "server-cert.pem"
-#define KEYF  HOME  "server-key.pem"
+#define CERTF  HOME "ca.crt"
+#define KEYF  HOME  "ca.key"
 
 // send the ssl out_bio packet to shared memory, update the pointer.
 void
@@ -120,6 +120,12 @@ proxy_shutdown_free(struct proxy *proxy) {
     if (0 == SSL_get_shutdown(proxy->serv_ssl)) {
         SSL_shutdown(proxy->serv_ssl);
         notify_tcp();
+    }
+    if (proxy->sni) {
+        free(proxy->sni);
+    }
+    if (proxy->origcrt) {
+        free(proxy->origcrt);
     }
     free(proxy);
 }
@@ -305,19 +311,21 @@ pxy_srcsslctx_create(struct proxy *ctx, X509 *crt, STACK_OF(X509) *chain,
 SSL *
 create_proxy_server_ssl(struct proxy *proxy) {
 	cert_t *cert;
-    X509 *origcrt;
 
     cert = cert_new();
-	origcrt = SSL_get_peer_certificate(proxy->cli_ssl);
-    cert->crt = cachemgr_fkcrt_get(origcrt);
+	proxy->origcrt = SSL_get_peer_certificate(proxy->cli_ssl);
+    if (!proxy->origcrt) {
+        printf("get real certificate wrong!\n");
+        exit(1);
+    }
+    cert->crt = cachemgr_fkcrt_get(proxy->origcrt);
     if (!cert->crt) {
         cert->crt = ssl_x509_forge(proxy->ctx->cacrt,
                                    proxy->ctx->cakey,
-                                   origcrt, NULL,
+                                   proxy->origcrt, NULL,
                                    proxy->ctx->key);
     }
-    cachemgr_fkcrt_set(origcrt, cert->crt);
-    X509_free(origcrt);
+    cachemgr_fkcrt_set(proxy->origcrt, cert->crt);
     cert_set_key(cert, proxy->ctx->key);
     cert_set_chain(cert, proxy->ctx->chain);
 	if (!cert)
@@ -350,9 +358,17 @@ create_channel_ctx(const char *certf, const char *keyf) {
     init_shm(channel->shm_ctx);
     channel->conns = 0;
     channel->cacrt = ssl_x509_load(certf);
+    if (!channel->cacrt) {
+        printf("certf load error\n");
+        exit(1);
+    }
     ssl_x509_refcount_inc(channel->cacrt);
     sk_X509_insert(channel->chain, channel->cacrt, 0);
     channel->cakey = ssl_key_load(keyf);
+    if (!channel->cakey) {
+        printf("keyf load error\n");
+        exit(1);
+    }
     channel->key = ssl_key_genrsa(1024);
 
     return channel;
@@ -387,6 +403,15 @@ int main ()
     OpenSSL_add_ssl_algorithms();
     SSL_load_error_strings();
     ERR_load_BIO_strings();
+
+    if (cachemgr_preinit() < 0) {
+        printf("cachemgr preinit wrong! exit!\n");
+        exit(1);
+    }
+    if (cachemgr_init() < 0) {
+        printf("cachemgr init wrong! exit!\n");
+        exit(1);
+    }
 
     struct ssl_channel *channel = create_channel_ctx(CERTF, KEYF);
     unsigned char *shm_up = channel->shm_ctx->shm_up;

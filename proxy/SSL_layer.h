@@ -15,6 +15,7 @@ struct ssl_channel {
 
 struct proxy {
     struct ssl_channel *ctx;
+    X509 *origcrt;
     int index;
     char * sni;
     SSL *cli_ssl;

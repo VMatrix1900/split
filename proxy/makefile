@@ -1,20 +1,20 @@
 BINDIR := ../bin
 BUILDDIR := ../build
 CC := gcc
-CFLAGS := -g -Wall -std=c99 -D DEBUG_SNI_PARSER
+CFLAGS := -g -Wall -Wextra -std=c99 -pthread -fstack-protector-all -pedantic -D_GNU_SOURCE
 SRCS := $(wildcard *.c)
 OBJS := $(SRCS:.c=.o)
 
 SSL_OBJS := $(filter-out TCP_layer.o, $(OBJS))
 
 %.o: %.c
-	$(CC) -c $(CFLAGS) -o $(BUILDDIR)/$@ $<
+	$(CC) -c $(CFLAGS) -include pthread.h -o $(BUILDDIR)/$@ $<
 
 tcp: TCP_layer.o
-	gcc $(CFLAGS) -o $(BINDIR)/tcp $(BUILDDIR)/$< -levent -lpthread
+	gcc $(CFLAGS) -o $(BINDIR)/tcp $(BUILDDIR)/$< -levent
 
 ssl: $(SSL_OBJS)
-	gcc $(CFLAGS) -o $(BINDIR)/ssl $(addprefix $(BUILDDIR)/, $(SSL_OBJS)) -lssl -lcrypto -lpthread
+	gcc $(CFLAGS) -o $(BINDIR)/ssl $(addprefix $(BUILDDIR)/, $(SSL_OBJS)) -lssl -lcrypto
 
 run_tcp: tcp
 	$(BINDIR)/tcp
