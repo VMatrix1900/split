@@ -109,6 +109,8 @@ struct proxy *proxy_new(struct ssl_channel *ctx)
     meth = TLSv1_2_method();
     sslctx = SSL_CTX_new(meth);
     // now we ban begin initialize the client side.
+    SSL_CTX_set_options(sslctx, SSL_OP_ALL);
+    SSL_CTX_set_verify(sslctx, SSL_VERIFY_NONE, NULL);
 
     proxy->cli_ssl = SSL_new(sslctx);
     CHK_NULL(proxy->cli_ssl);
