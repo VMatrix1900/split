@@ -36,7 +36,7 @@ send_down(struct proxy *proxy, int server) {
         memcpy(proxy->down_pointer, &pending, sizeof(size_t));
         proxy->down_pointer += sizeof(size_t);
         int read = BIO_read(out_bio, proxy->down_pointer, pending);
-        printf("send_down the packet completed. packet size is: %d\n", read);
+        printf("%s send_down the packet completed. packet size is: %d\n", (0 == server) ? "client" : "server", read);
         proxy->down_pointer += read;
         proxy->msgs_need_to_out += 1;
     }
@@ -321,14 +321,14 @@ create_proxy_server_ssl(struct proxy *proxy) {
         printf("get real certificate wrong!\n");
         exit(1);
     }
-    /*cert->crt = cachemgr_fkcrt_get(proxy->origcrt);*/
+    cert->crt = cachemgr_fkcrt_get(proxy->origcrt);
     if (!cert->crt) {
         cert->crt = ssl_x509_forge(proxy->ctx->cacrt,
                                    proxy->ctx->cakey,
                                    proxy->origcrt, NULL,
                                    proxy->ctx->key);
     }
-    /*cachemgr_fkcrt_set(proxy->origcrt, cert->crt);*/
+    cachemgr_fkcrt_set(proxy->origcrt, cert->crt);
     cert_set_key(cert, proxy->ctx->key);
     cert_set_chain(cert, proxy->ctx->chain);
 	if (!cert)
@@ -457,6 +457,7 @@ int main ()
                 if (!proxy->SNI_parsed) {
                     peek_hello_msg(proxy, shm_up);
                 } else if (proxy->client_handshake_done && !proxy->server_handshake_done) {
+                    printf("server:");
                     shm_up = receive_up(proxy->serv_ssl, shm_up);
                     int r = SSL_do_handshake(proxy->serv_ssl);
                     send_down(proxy, 1);
@@ -472,12 +473,14 @@ int main ()
                         }
                     } else {
                         // handshake is done
+                        printf("Server handshake done!\n");
                         proxy->server_handshake_done = true;
                     }
                 } else if (proxy->server_handshake_done) {
                     forward_record(proxy->serv_ssl, proxy->cli_ssl, proxy);
                 }
             } else if (0 == server) {
+                printf("client:");
                 shm_up = receive_up(proxy->cli_ssl, shm_up);
                 if(!proxy->client_handshake_done) {
                     int r = SSL_do_handshake(proxy->cli_ssl);

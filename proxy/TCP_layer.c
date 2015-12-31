@@ -60,8 +60,10 @@ copydata(evutil_socket_t fd, short what, void* ptr){
             shm += sizeof(int);
             // determine send to client side or server side.
             if (1 == server) {
+                printf("server send down:");
                 bev = conn->serv_bev;
             } else if (0 == server) {
+                printf("client send down:");
                 bev = conn->cli_bev;
             } else {
                 printf("Wrong server indicator:%d\n", server);
@@ -111,19 +113,19 @@ readcb(struct bufferevent *bev, void *ptr, int server) {
 
 void
 cli_readcb(struct bufferevent *bev, void *ptr){
-    printf("begin read client data:\n");
+    printf("client:");
     readcb(bev, ptr, 0);
 }
 
 void
 serv_readcb(struct bufferevent *bev, void *ptr){
-    printf("begin read server data:\n");
+    printf("server:");
     readcb(bev, ptr, 1);
 }
 
 void
 writecb(struct bufferevent *bev, void *ptr) {
-    printf("packet send to network layer\n");
+    printf("packet sent to network layer\n");
 }
 
 void
