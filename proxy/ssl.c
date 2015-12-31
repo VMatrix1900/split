@@ -696,6 +696,10 @@ X509 *ssl_x509_forge(X509 *cacrt, EVP_PKEY *cakey, X509 *origcrt,
     GENERAL_NAMES *names;
     GENERAL_NAME *gn;
     X509 *crt;
+    char *cacrt_name = ssl_x509_names_to_str(cacrt);
+    char *origcrt_name = ssl_x509_names_to_str(origcrt);
+    printf("cacrt common name fields: %s\n", cacrt_name);
+    printf("origcrt common name fields: %s\n", origcrt_name);
 
     subject = X509_get_subject_name(origcrt);
     issuer = X509_get_subject_name(cacrt);
