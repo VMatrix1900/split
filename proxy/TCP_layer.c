@@ -70,6 +70,7 @@ copydata(evutil_socket_t fd, short what, void* ptr){
                 exit(1);
             }
             size_t length = *((size_t *) shm);
+            printf("packet size:%zu\n", length);
             shm += sizeof(size_t);
             bufferevent_write(bev, shm, length);
             shm += length;
@@ -99,14 +100,8 @@ readcb(struct bufferevent *bev, void *ptr, int server) {
     shm += sizeof(int);
     // since we can not determine the packet length easily, we need to write it at the front of SSL record.
     size_t read = bufferevent_read(bev, shm + sizeof(size_t), BUFSZ);
-    if (read >= 0) {
         printf("read %zu data from network\n", read);
         memcpy(shm, &read, sizeof(size_t));
-    } else {
-        perror("read callback error");
-    }
-    // after send the msg wait for 1msec for response
-    evtimer_add(ctx->timer, &msec);
     // notify openssl process
     sem_post(ctx->shm_ctx->up);
 }
@@ -146,7 +141,7 @@ eventcb(struct bufferevent *bev, short events, void *ptr){
     } else if (events & BEV_EVENT_ERROR) {
          /* An error occured while connecting. */
     } else if (events & BEV_EVENT_EOF) {
-        // socket is closed
+        printf("socket is closed");
         proxy_ctx_free(ptr);
     }
 }
@@ -201,6 +196,7 @@ accept_conn_cb(struct evconnlistener *listener,
     }
 
     bufferevent_enable(ctx->cli_bev, EV_READ|EV_WRITE);
+    evtimer_add(proxy->timer, &msec);
 }
 
 
@@ -211,7 +207,10 @@ int main(void)
     struct proxy_ctx *proxy = malloc(sizeof(struct proxy_ctx));
     proxy->shm_ctx = malloc(sizeof(struct shm_ctx_t));
 
-    init_shm(proxy->shm_ctx);
+    if (init_shm(proxy->shm_ctx)) {
+        printf("init shm wrong!\n");
+        exit(-1);
+    }
 
     printf("initiated shared memory\n");
     proxy->base = event_base_new();

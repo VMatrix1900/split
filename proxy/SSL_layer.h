@@ -14,6 +14,8 @@ struct ssl_channel {
 };
 
 struct proxy {
+    int client_received;
+    int server_send;
     struct ssl_channel *ctx;
     X509 *origcrt;
     int index;
