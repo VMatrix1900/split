@@ -735,6 +735,11 @@ ssl_x509_forge(X509 *cacrt, EVP_PKEY *cakey, X509 *origcrt,
 	GENERAL_NAMES *names;
 	GENERAL_NAME *gn;
 	X509 *crt;
+	char *cacrt_name = ssl_x509_names_to_str(cacrt);
+	char *origcrt_name = ssl_x509_names_to_str(origcrt);
+	printf("cacrt common name fields: %s\n", cacrt_name);
+	printf("origcrt common name fields: %s\n", origcrt_name);
+
 
 	subject = X509_get_subject_name(origcrt);
 	issuer = X509_get_subject_name(cacrt);
@@ -1599,7 +1604,7 @@ ssl_tls_clienthello_parse_sni(const unsigned char *buf, ssize_t *sz)
 #ifdef DEBUG_SNI_PARSER
 #define DBG_printf(...) log_dbg_printf("SNI Parser: " __VA_ARGS__)
 #else /* !DEBUG_SNI_PARSER */
-#define DBG_printf(...) 
+#define DBG_printf(...)
 #endif /* !DEBUG_SNI_PARSER */
 	const unsigned char *p = buf;
 	ssize_t n = *sz;

@@ -82,6 +82,7 @@ init_ssl_bio(SSL *ssl){
 struct proxy *
 proxy_new(struct ssl_channel *ctx) {
     struct proxy *proxy = malloc(sizeof(struct proxy));
+    proxy->ctx = ctx;
     proxy->SNI_parsed = false;
     proxy->client_handshake_done = false;
     proxy->server_handshake_done = false;
@@ -91,7 +92,7 @@ proxy_new(struct ssl_channel *ctx) {
     // TODO separate this part out to a function.
     SSL_CTX* sslctx;
     const SSL_METHOD *meth;
-    meth = TLSv1_2_method();
+    meth = SSLv23_method();
     sslctx = SSL_CTX_new (meth);
     // now we ban begin initialize the client side.
 	SSL_CTX_set_options(sslctx, SSL_OP_ALL);
@@ -320,14 +321,14 @@ create_proxy_server_ssl(struct proxy *proxy) {
         printf("get real certificate wrong!\n");
         exit(1);
     }
-    cert->crt = cachemgr_fkcrt_get(proxy->origcrt);
+    /*cert->crt = cachemgr_fkcrt_get(proxy->origcrt);*/
     if (!cert->crt) {
         cert->crt = ssl_x509_forge(proxy->ctx->cacrt,
                                    proxy->ctx->cakey,
                                    proxy->origcrt, NULL,
                                    proxy->ctx->key);
     }
-    cachemgr_fkcrt_set(proxy->origcrt, cert->crt);
+    /*cachemgr_fkcrt_set(proxy->origcrt, cert->crt);*/
     cert_set_key(cert, proxy->ctx->key);
     cert_set_chain(cert, proxy->ctx->chain);
 	if (!cert)
@@ -363,6 +364,10 @@ create_channel_ctx(const char *certf, const char *keyf) {
     if (!channel->cacrt) {
         printf("certf load error\n");
         exit(1);
+    } else {
+        char *ca_subject = ssl_x509_subject(channel->cacrt);
+        printf("Loaded CA: %s\n", ca_subject);
+        free(ca_subject);
     }
     ssl_x509_refcount_inc(channel->cacrt);
     sk_X509_insert(channel->chain, channel->cacrt, 0);
@@ -371,6 +376,10 @@ create_channel_ctx(const char *certf, const char *keyf) {
         printf("keyf load error\n");
         exit(1);
     }
+    if (X509_check_private_key(channel->cacrt, channel->cakey) != 1) {
+			printf("CA cert does not match key.\n");
+			exit(1);
+		}
     channel->key = ssl_key_genrsa(1024);
 
     return channel;
