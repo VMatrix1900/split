@@ -5,7 +5,7 @@ key_t key_down = 1001;
 #define SHMSZ 4096
 #define BUFSZ 4096
 
-struct timeval msec = {0, 100};
+struct timeval msec = {0, 1};
 
 // names of 2 semophores.
 char UP_SEM[] = "up";
@@ -53,6 +53,10 @@ int init_shm(struct shm_ctx_t *shm_ctx)
         return -1;
     }
     shm_ctx->shm_up = shmat(shm_ctx->shmid_up, NULL, 0);
+    if (shm_ctx->shm_up < 0) {
+        perror("shm_up fail.");
+        return -1;
+    }
 
     shm_ctx->shmid_down = shmget(key_down, SHMSZ, IPC_CREAT | 0666);
     if (shm_ctx->shmid_down < 0) {
@@ -60,5 +64,9 @@ int init_shm(struct shm_ctx_t *shm_ctx)
         return -1;
     }
     shm_ctx->shm_down = shmat(shm_ctx->shmid_down, NULL, 0);
+    if (shm_ctx->shm_down < 0) {
+        perror("shm_down fail.");
+        return -1;
+    }
     return 0;
 }
