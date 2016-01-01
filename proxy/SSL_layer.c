@@ -192,8 +192,8 @@ forward_record(SSL *from, SSL *to, struct proxy *proxy) {
                 exit(1);
         }
     }
-    buf[length] = '\0';
-    printf("%s buf received\n", buf);
+    /*buf[length] = '\0';*/
+    /*printf("%s buf received\n", buf);*/
     int r = SSL_write(to, buf, length);
     if (r <= 0) {
         switch (SSL_get_error(to, r)) {
