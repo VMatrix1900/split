@@ -75,14 +75,19 @@ int destroy_shm(struct shm_ctx_t *shm_ctx)
 {
     if (sem_close(shm_ctx->up) < 0 || sem_unlink(UP_SEM) < 0) {
         perror("sem_up close wrong.!");
+        return -1;
     }
     if (sem_close(shm_ctx->down) < 0 || sem_unlink(DOWN_SEM) < 0) {
         perror("sem_down close wrong.!");
+        return -1;
     }
-    if (shmdt(shm_up) < 0) {
+    if (shmdt(shm_ctx->shm_up) < 0) {
         perror("shm_up detach wrong!");
+        return -1;
     }
-    if (shmdt(shm_down) < 0) {
+    if (shmdt(shm_ctx->shm_down) < 0) {
         perror("shm_down detach wrong!");
+        return -1;
     }
+    return 0;
 }
