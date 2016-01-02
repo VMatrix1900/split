@@ -81,6 +81,27 @@ init_ssl_bio(SSL *ssl){
     return 0;
 }
 
+SSL *
+pxy_dstssl_setup() {
+    SSL *cli_ssl;
+    SSL_CTX* sslctx;
+    const SSL_METHOD *meth;
+    meth = SSLv23_method();
+    sslctx = SSL_CTX_new (meth);
+    // now we ban begin initialize the client side.
+	SSL_CTX_set_options(sslctx, SSL_OP_ALL);
+	SSL_CTX_set_verify(sslctx, SSL_VERIFY_NONE, NULL);
+
+    cli_ssl = SSL_new(sslctx);                         CHK_NULL(cli_ssl);
+
+    init_ssl_bio(cli_ssl);
+    SSL_set_connect_state(cli_ssl);
+
+    SSL_CTX_free(sslctx);
+    return cli_ssl;
+
+}
+
 struct proxy *
 proxy_new(struct ssl_channel *ctx) {
     struct proxy *proxy = malloc(sizeof(struct proxy));
@@ -93,21 +114,7 @@ proxy_new(struct ssl_channel *ctx) {
     proxy->client_received = 0;
     proxy->server_send = 0;
     proxy->down_pointer = ctx->shm_ctx->shm_down + sizeof(int);
-    // TODO separate this part out to a function.
-    SSL_CTX* sslctx;
-    const SSL_METHOD *meth;
-    meth = SSLv23_method();
-    sslctx = SSL_CTX_new (meth);
-    // now we ban begin initialize the client side.
-	SSL_CTX_set_options(sslctx, SSL_OP_ALL);
-	SSL_CTX_set_verify(sslctx, SSL_VERIFY_NONE, NULL);
-
-    proxy->cli_ssl = SSL_new(sslctx);                         CHK_NULL(proxy->cli_ssl);
-
-    init_ssl_bio(proxy->cli_ssl);
-    SSL_set_connect_state(proxy->cli_ssl);
-
-    SSL_CTX_free(sslctx);
+    proxy->cli_ssl = pxy_dstssl_setup();
 
     return proxy;
 }
@@ -359,7 +366,7 @@ pxy_srcsslctx_create(struct proxy *ctx, X509 *crt, STACK_OF(X509) *chain,
 }
 
 SSL *
-create_proxy_server_ssl(struct proxy *proxy) {
+pxy_srcssl_create(struct proxy *proxy) {
 	cert_t *cert;
 
     cert = cert_new();
@@ -395,8 +402,8 @@ create_proxy_server_ssl(struct proxy *proxy) {
 }
 
 void
-setup_proxy_server_ssl(struct proxy *proxy) {
-    proxy->serv_ssl = create_proxy_server_ssl(proxy);
+pxy_srcssl_setup(struct proxy *proxy) {
+    proxy->serv_ssl = pxy_srcssl_create(proxy);
     init_ssl_bio(proxy->serv_ssl);
     SSL_set_accept_state(proxy->serv_ssl);
 }
@@ -459,9 +466,10 @@ peek_hello_msg(struct proxy *proxy, unsigned char *msg) {
 
 int main ()
 {
-    SSL_library_init();
-    OpenSSL_add_ssl_algorithms();
-    SSL_load_error_strings();
+    if (ssl_init() < 0) {
+        printf("OpenSSL library init wrong!\n");
+        exit(-1);
+    }
     ERR_load_BIO_strings();
 
     if (cachemgr_preinit() < 0) {
@@ -551,7 +559,7 @@ int main ()
                     } else {
                         printf("client handshake is done\n");
                         proxy->client_handshake_done = true;
-                        setup_proxy_server_ssl(proxy);
+                        pxy_srcssl_setup(proxy);
                         // copy the hello msg from buffer to bio;
                         BIO_write(SSL_get_rbio(proxy->serv_ssl),
                                 proxy->client_hello_buf,
