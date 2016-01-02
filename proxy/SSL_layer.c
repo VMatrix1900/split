@@ -8,28 +8,10 @@
 #include <sys/shm.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 #include "cachemgr.h"
 #include "cert.h"
 #include "ssl.h"
-
-#define CHK_NULL(x) \
-    if ((x) == NULL) exit(1)
-#define CHK_ERR(err, s) \
-    if ((err) == -1) {  \
-        perror(s);      \
-        exit(1);        \
-    }
-#define CHK_SSL(err)                 \
-    if ((err) == -1) {               \
-        ERR_print_errors_fp(stderr); \
-        exit(2);                     \
-    }
-
-/* define HOME to be dir for key and cert files... */
-#define HOME "/home/vincent/Downloads/memory/proxy/"
-/* Make these what you want for cert & key files */
-#define CERTF HOME "ca.crt"
-#define KEYF HOME "ca.key"
 
 // send the ssl out_bio packet to shared memory, update the pointer.
 void send_down(struct proxy *proxy, int server)
@@ -85,7 +67,7 @@ int init_ssl_bio(SSL *ssl)
     out_bio = BIO_new(BIO_s_mem());
     if (out_bio == NULL) {
         printf("Error: cannot allocate write bio.\n");
-        return -2;
+        return -1;
     }
 
     BIO_set_mem_eof_return(
@@ -108,9 +90,13 @@ SSL *pxy_dstssl_setup()
     SSL_CTX_set_verify(sslctx, SSL_VERIFY_NONE, NULL);
 
     cli_ssl = SSL_new(sslctx);
-    CHK_NULL(cli_ssl);
+    if (!cli_ssl) {
+        return NULL;
+    }
 
-    init_ssl_bio(cli_ssl);
+    if (init_ssl_bio(cli_ssl) < 0) {
+        return NULL;
+    }
     SSL_set_connect_state(cli_ssl);
 
     SSL_CTX_free(sslctx);
@@ -130,11 +116,14 @@ struct proxy *proxy_new(struct ssl_channel *ctx)
     proxy->server_send = 0;
     proxy->down_pointer = ctx->shm_ctx->shm_down + sizeof(int);
     proxy->cli_ssl = pxy_dstssl_setup();
+    if (!proxy->cli_ssl) {
+        return NULL;
+    }
 
     return proxy;
 }
 
-void notify_tcp() { printf("connection shutdown!\n"); }
+void notify_tcp() { printf("SSL connection shutdown!\n"); }
 void proxy_shutdown_free(struct proxy *proxy)
 {
     if (0 == SSL_get_shutdown(proxy->cli_ssl)) {
@@ -380,7 +369,7 @@ SSL *pxy_srcssl_create(struct proxy *proxy)
     proxy->origcrt = SSL_get_peer_certificate(proxy->cli_ssl);
     if (!proxy->origcrt) {
         printf("get real certificate wrong!\n");
-        exit(1);
+        return NULL;
     }
     cert->crt = cachemgr_fkcrt_get(proxy->origcrt);
     if (!cert->crt) {
@@ -407,37 +396,27 @@ SSL *pxy_srcssl_create(struct proxy *proxy)
 void pxy_srcssl_setup(struct proxy *proxy)
 {
     proxy->serv_ssl = pxy_srcssl_create(proxy);
+    if (!proxy->serv_ssl) {
+        printf("server ssl create wrong.\n");
+        proxy_shutdown_free(proxy);
+    }
     init_ssl_bio(proxy->serv_ssl);
     SSL_set_accept_state(proxy->serv_ssl);
 }
 
-struct ssl_channel *create_channel_ctx(const char *certf, const char *keyf)
+struct ssl_channel *create_channel_ctx()
 {
     struct ssl_channel *channel = malloc(sizeof(struct ssl_channel));
     channel->shm_ctx = malloc(sizeof(struct shm_ctx_t));
     init_shm(channel->shm_ctx);
     channel->conns = 0;
-    channel->cacrt = ssl_x509_load(certf);
-    if (!channel->cacrt) {
-        printf("certf load error\n");
-        exit(1);
-    } else {
-        char *ca_subject = ssl_x509_subject(channel->cacrt);
-        printf("Loaded CA: %s\n", ca_subject);
-        free(ca_subject);
-    }
-    ssl_x509_refcount_inc(channel->cacrt);
-    sk_X509_insert(channel->chain, channel->cacrt, 0);
-    channel->cakey = ssl_key_load(keyf);
-    if (!channel->cakey) {
-        printf("keyf load error\n");
-        exit(1);
-    }
-    if (X509_check_private_key(channel->cacrt, channel->cakey) != 1) {
-        printf("CA cert does not match key.\n");
-        exit(1);
-    }
+    channel->cacrt = NULL;
+    channel->cakey = NULL;
     channel->key = ssl_key_genrsa(1024);
+    if (!channel->key) {
+        printf("public key generation wrong!\n");
+        return NULL;
+    }
 
     return channel;
 }
@@ -462,13 +441,12 @@ unsigned char *peek_hello_msg(struct proxy *proxy, unsigned char *msg)
             SSL_set_tlsext_host_name(proxy->cli_ssl, proxy->sni);
         }
         SSL_do_handshake(proxy->cli_ssl);
-        // TODO check the code make sure it's want write
         send_down(proxy, 0);
     }
     return msg;
 }
 
-int main()
+int main(int argc, char *argv[])
 {
     if (ssl_init() < 0) {
         printf("OpenSSL library init wrong!\n");
@@ -478,14 +456,53 @@ int main()
 
     if (cachemgr_preinit() < 0) {
         printf("cachemgr preinit wrong! exit!\n");
-        exit(1);
+        exit(-1);
     }
     if (cachemgr_init() < 0) {
         printf("cachemgr init wrong! exit!\n");
-        exit(1);
+        exit(-1);
     }
 
-    struct ssl_channel *channel = create_channel_ctx(CERTF, KEYF);
+    struct ssl_channel *channel = create_channel_ctx();
+    if (!channel) {
+        printf("channel initiate wrong!\n");
+        exit(-1);
+    }
+
+    int ch;
+    while ((ch = getopt(argc, argv, "c:k:")) != -1) {
+        switch (ch) {
+        case 'c':
+            if (channel->cacrt) {
+                X509_free(channel->cacrt);
+            }
+            channel->cacrt = ssl_x509_load(optarg);
+            if (!channel->cacrt) {
+                printf("certf load error\n");
+                exit(-1);
+            } else {
+                char *ca_subject = ssl_x509_subject(channel->cacrt);
+                printf("Loaded CA: %s\n", ca_subject);
+                free(ca_subject);
+            }
+            ssl_x509_refcount_inc(channel->cacrt);
+            sk_X509_insert(channel->chain, channel->cacrt, 0);
+            break;
+        case 'k':
+            channel->cakey = ssl_key_load(optarg);
+            if (!channel->cakey) {
+                printf("keyf load error\n");
+                exit(-1);
+            }
+            if (X509_check_private_key(channel->cacrt, channel->cakey) != 1) {
+                printf("CA cert does not match key.\n");
+                exit(-1);
+            }
+            break;
+        case '?':
+            exit(-1);
+        }
+    }
     unsigned char *shm_up = channel->shm_ctx->shm_up;
     unsigned char *shm_down = channel->shm_ctx->shm_down;
     struct proxy *proxy;
@@ -506,6 +523,11 @@ int main()
                 // that means a new clienthello is coming. must be the server
                 // side.
                 proxy = proxy_new(channel);
+                if (!proxy) {
+                    printf("proxy new wrong!\n");
+                    proxy_shutdown_free(proxy);
+                    exit(-1);
+                }
                 proxy->index = index;
                 channel->proxies[index] = proxy;
                 channel->conns++;
@@ -546,7 +568,7 @@ int main()
                     forward_record(proxy->serv_ssl, proxy->cli_ssl, proxy);
                 } else {
                     printf("wrong state!\n");
-                    exit(1);
+                    exit(-1);
                 }
             } else if (0 == server) {
                 printf("client ");
@@ -583,7 +605,7 @@ int main()
                 }
             } else {
                 printf("Wrong server indicator:%d\n", server);
-                exit(1);
+                exit(-1);
             }
         }
 
