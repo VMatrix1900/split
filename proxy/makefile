@@ -1,23 +1,38 @@
 BINDIR := ../bin
 BUILDDIR := ../build
 CC := gcc
-CFLAGS := -g -Wall -Wextra -std=c99 -pthread -fstack-protector-all -pedantic -D_GNU_SOURCE
-SRCS := $(wildcard *.c)
+SSL_LIB := -I/home/vincent/Downloads/openssl-1.0.1i/include -L/home/vincent/Downloads/openssl-1.0.1i
+CFLAGS := -g -Wall -Wextra -std=c99 -pthread -fstack-protector-all -pedantic -D_GNU_SOURCE -DDEBUG_SESSION_CACHE
+SRCS := $(filter-out genode_library_c.c, $(wildcard *.c))
 OBJS := $(SRCS:.c=.o)
+TCP_OBJ := TCP_layer.o proxy_tcp.o
 
-SSL_OBJS := $(filter-out TCP_layer.o, $(OBJS))
+SSL_OBJS := $(filter-out $(TCP_OBJ), $(OBJS))
+BUILD_OBJS := $(addprefix $(BUILDDIR)/, $(SSL_OBJS))
+TCP_OBJS := $(addprefix $(BUILDDIR)/, $(TCP_OBJ))
 
-%.o: %.c
-	$(CC) -c $(CFLAGS) -include pthread.h -o $(BUILDDIR)/$@ $<
+$(BUILDDIR)/%.o: %.c makefile
+	$(CC) -c $(CFLAGS) -include pthread.h -o $@ $<
 
-tcp: TCP_layer.o
-	gcc $(CFLAGS) -o $(BINDIR)/tcp $(BUILDDIR)/$< -levent
+$(BINDIR)/tcp: $(TCP_OBJS)
+	$(CC) $(CFLAGS) -o $(BINDIR)/tcp $^ -levent
 
-ssl: $(SSL_OBJS)
-	gcc $(CFLAGS) -o $(BINDIR)/ssl $(addprefix $(BUILDDIR)/, $(SSL_OBJS)) -lssl -lcrypto
+$(BINDIR)/ssl: $(BUILD_OBJS)
+	$(CC) $(CFLAGS) -o $(BINDIR)/ssl $^ -lssl -lcrypto
+
+.PHONY: ssl tcp
+
+ssl: $(BINDIR)/ssl
+
+tcp: $(BINDIR)/tcp
 
 run_tcp: tcp
 	$(BINDIR)/tcp
 
 run_ssl: ssl
 	$(BINDIR)/ssl
+
+clean:
+	rm ../bin/ssl
+	rm ../bin/tcp
+	rm ../build/*

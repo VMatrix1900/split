@@ -1,4 +1,12 @@
+#ifndef SHM_AND_SEM_H
+#define SHM_AND_SEM_H
+
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 #include <semaphore.h>
+#include <string.h>
 //name and the size of the shared memory segment.
 key_t key_up = 1000;
 key_t key_down = 1001;
@@ -11,12 +19,14 @@ struct timeval msec = {0, 1};
 char UP_SEM[]= "up";
 char DOWN_SEM[]= "down";
 char LOCK_SEM[]= "lock";
+char READ_LOCK[] = "readlock";
 
 // store the info about the semophores and shared memory.
 struct shm_ctx_t {
     sem_t *down;
     sem_t *up;
     sem_t *write_lock;
+    sem_t *read_lock;
     int shmid_up;
     int shmid_down;
     unsigned char *shm_up;
@@ -48,6 +58,13 @@ int init_shm(struct shm_ctx_t *shm_ctx){
         return -1;
     }
 
+    shm_ctx->read_lock = sem_open(READ_LOCK, O_CREAT, 0644, 0);
+    if(shm_ctx->read_lock == SEM_FAILED)
+    {
+        perror("unable to create semaphore");
+        sem_unlink(READ_LOCK);
+        return -1;
+    }
     //create the shared memory segment
     shm_ctx->shmid_up = shmget(key_up,SHMSZ,IPC_CREAT|0666);
     if(shm_ctx->shmid_up<0)
@@ -60,6 +77,7 @@ int init_shm(struct shm_ctx_t *shm_ctx){
         perror("shm_up fail.");
         return -1;
     }
+    memset(shm_ctx->shm_up, 0, SHMSZ);
 
     shm_ctx->shmid_down = shmget(key_down,SHMSZ,IPC_CREAT|0666);
     if(shm_ctx->shmid_down<0)
@@ -72,6 +90,7 @@ int init_shm(struct shm_ctx_t *shm_ctx){
         perror("shm_down fail.");
         return -1;
     }
+    memset(shm_ctx->shm_down, 0, SHMSZ);
     return 0;
 }
 
@@ -85,6 +104,14 @@ destroy_shm(struct shm_ctx_t *shm_ctx) {
         perror("sem_down close wrong.!");
         return -1;
     }
+    if (sem_close(shm_ctx->write_lock) < 0 || sem_unlink(LOCK_SEM) < 0) {
+        perror("sem_up close wrong.!");
+        return -1;
+    }
+    if (sem_close(shm_ctx->read_lock) < 0 || sem_unlink(READ_LOCK) < 0) {
+        perror("sem_down close wrong.!");
+        return -1;
+    }
     if (shmdt(shm_ctx->shm_up) < 0) {
         perror("shm_up detach wrong!");
         return -1;
@@ -95,3 +122,5 @@ destroy_shm(struct shm_ctx_t *shm_ctx) {
     }
     return 0;
 }
+
+#endif
