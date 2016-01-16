@@ -8,16 +8,30 @@
 #include <semaphore.h>
 #include <stdio.h>
 #include <sys/ipc.h>
-#include <sys/shm.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/types.h>
 
-#include "TCP_layer.h"
+#include "proxy_tcp.h"
 #include "shm_and_sem.h"
 
-int conns = 0;
+struct proxy_ctx *proxy_ctx_new()
+{
+    struct proxy_ctx *proxy = malloc(sizeof(struct proxy_ctx));
+    proxy->shm_ctx = malloc(sizeof(struct shm_ctx_t));
+
+    if (init_shm(proxy->shm_ctx)) {
+        printf("init shm wrong!\n");
+        return NULL;
+    }
+
+    printf("initiated shared memory\n");
+    proxy->base = event_base_new();
+    proxy->counts = 0;
+    memset(proxy->conns, 0, MAXCONNS * sizeof(struct pxy_conns *));
+    return proxy;
+}
 
 int nat_netfilter_lookup(struct sockaddr *dst_addr, socklen_t *dst_addrlen,
                          evutil_socket_t s, struct sockaddr *src_addr,
@@ -50,6 +64,9 @@ void copydata(evutil_socket_t fd, short what, void *ptr)
     if (!sem_trywait(ctx->shm_ctx->down)) {
         // how many record to send?
         int number = *((int *)shm);
+        int temp = 0;
+        sem_getvalue(ctx->shm_ctx->down, &temp);
+        printf("sem value is %d\n", temp);
         shm += sizeof(int);
         int i;
         for (i = 0; i < number; i++) {
@@ -75,6 +92,7 @@ void copydata(evutil_socket_t fd, short what, void *ptr)
             bufferevent_write(bev, shm, length);
             shm += length;
         }
+        sem_post(ctx->shm_ctx->read_lock);
     }
     event_add(ctx->timer, &msec);
 }
@@ -101,7 +119,7 @@ void readcb(struct bufferevent *bev, void *ptr, int server)
     // since we can not determine the packet length easily, we need to write it
     // at the front of SSL record.
     size_t read = bufferevent_read(bev, shm + sizeof(size_t), BUFSZ);
-    printf("read %zu data from network\n", read);
+    /*printf("read %zu data from network\n", read);*/
     memcpy(shm, &read, sizeof(size_t));
     // notify openssl process
     sem_post(ctx->shm_ctx->up);
@@ -109,113 +127,87 @@ void readcb(struct bufferevent *bev, void *ptr, int server)
 
 void cli_readcb(struct bufferevent *bev, void *ptr)
 {
-    printf("client:");
+    /*printf("client:");*/
     readcb(bev, ptr, 0);
 }
 
 void serv_readcb(struct bufferevent *bev, void *ptr)
 {
-    printf("server:");
+    /*printf("server:");*/
     readcb(bev, ptr, 1);
 }
 
 void writecb(struct bufferevent *bev, void *ptr)
 {
-    printf("packet sent to network layer\n");
-}
-
-void proxy_ctx_free(struct pxy_conn *ctx)
-{
-    if (!ctx->cli_bev) {
-        bufferevent_free(ctx->cli_bev);
-    }
-    if (!ctx->serv_bev) {
-        bufferevent_free(ctx->serv_bev);
-    }
-    free(ctx);
+    /*printf("packet sent to network layer\n");*/
 }
 
 void eventcb(struct bufferevent *bev, short events, void *ptr)
 {
+    struct pxy_conn *ctx = ptr;
     if (events & BEV_EVENT_CONNECTED) {
         printf("client socket: connected\n");
     } else if (events & BEV_EVENT_ERROR) {
         /* An error occured while connecting. */
+        ctx->closed = 1;
     } else if (events & BEV_EVENT_EOF) {
-        printf("socket is closed");
-        proxy_ctx_free(ptr);
+        printf("socket is closed\n");
+        ctx->closed = 1;
     }
 }
 
 void accept_conn_cb(struct evconnlistener *listener, evutil_socket_t fd,
                     struct sockaddr *peeraddr, int peeraddrlen, void *ptr)
 {
-    struct pxy_conn *ctx = malloc(sizeof(struct pxy_conn));
+    struct proxy_ctx *ctx = ptr;
     printf("connection captured, begin init proxy\n");
-    // setup the proxy struct;
-    struct proxy_ctx *proxy = (struct proxy_ctx *)ptr;
-    ctx->shm_ctx = proxy->shm_ctx;
-    ctx->index = conns;
-    proxy->conns[conns] = ctx;
-    ctx->timer = proxy->timer;
-    conns++;
+    struct pxy_conn *conn = pxy_conn_new(ctx);
 
     /* get the real socket. using the nat table. */
-    ctx->dstsocklen = sizeof(struct sockaddr_storage);
-    if (nat_netfilter_lookup((struct sockaddr *)&(ctx->dstsock),
-                             &(ctx->dstsocklen), fd, peeraddr,
+    conn->dstsocklen = sizeof(struct sockaddr_storage);
+    if (nat_netfilter_lookup((struct sockaddr *)&(conn->dstsock),
+                             &(conn->dstsocklen), fd, peeraddr,
                              peeraddrlen) == -1) {
         printf(
             "Connection not found in NAT "
             "state table, aborting connection\n");
         evutil_closesocket(fd);
-        proxy_ctx_free(ctx);
+        free(ctx);
         return;
     }
 
-    // enable the up channel write permission.
-    sem_post(ctx->shm_ctx->write_lock);
     /* We got a new connection! Set up a bufferevent for it. */
     struct event_base *base = evconnlistener_get_base(listener);
-    ctx->serv_bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
+    conn->serv_bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
 
-    bufferevent_setcb(ctx->serv_bev, serv_readcb, writecb, eventcb, ctx);
+    bufferevent_setcb(conn->serv_bev, serv_readcb, writecb, eventcb, conn);
 
-    bufferevent_enable(ctx->serv_bev, EV_READ | EV_WRITE);
+    bufferevent_enable(conn->serv_bev, EV_READ | EV_WRITE);
 
     // then we setup client side socket.
-    ctx->cli_bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+    conn->cli_bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 
-    bufferevent_setcb(ctx->cli_bev, cli_readcb, writecb, eventcb, ctx);
+    bufferevent_setcb(conn->cli_bev, cli_readcb, writecb, eventcb, conn);
 
-    if (bufferevent_socket_connect(ctx->cli_bev,
-                                   (struct sockaddr *)&ctx->dstsock,
-                                   ctx->dstsocklen) < 0) {
+    if (bufferevent_socket_connect(conn->cli_bev,
+                                   (struct sockaddr *)&conn->dstsock,
+                                   conn->dstsocklen) < 0) {
         /* Error starting connection */
-        proxy_ctx_free(ctx);
+        pxy_conn_free(conn);
         return;
     }
 
-    bufferevent_enable(ctx->cli_bev, EV_READ | EV_WRITE);
-    evtimer_add(proxy->timer, &msec);
+    bufferevent_enable(conn->cli_bev, EV_READ | EV_WRITE);
+    evtimer_add(ctx->timer, &msec);
 }
 
 int main(void)
 {
     struct evconnlistener *listener;
     struct sockaddr_in sin;
-    struct proxy_ctx *proxy = malloc(sizeof(struct proxy_ctx));
-    proxy->shm_ctx = malloc(sizeof(struct shm_ctx_t));
 
-    if (init_shm(proxy->shm_ctx)) {
-        printf("init shm wrong!\n");
-        exit(-1);
-    }
-
-    printf("initiated shared memory\n");
-    proxy->base = event_base_new();
+    struct proxy_ctx *proxy = proxy_ctx_new();
     proxy->timer = evtimer_new(proxy->base, copydata, proxy);
-
     memset(&sin, 0, sizeof(sin));
     sin.sin_family = AF_INET;
     sin.sin_addr.s_addr = INADDR_ANY;
@@ -231,6 +223,9 @@ int main(void)
         return 1;
     }
 
+    // enable the up channel write permission.
+    sem_post(proxy->shm_ctx->write_lock);
     event_base_dispatch(proxy->base);
+    proxy_ctx_free(proxy);
     return 0;
 }
