@@ -64,9 +64,6 @@ copydata(evutil_socket_t fd, short what, void* ptr){
     if(!sem_trywait(ctx->shm_ctx->down)){
         // how many record to send?
         int number = *((int *)shm);
-        int temp= 0;
-        sem_getvalue(ctx->shm_ctx->down, &temp);
-        printf("sem value is %d\n", temp);
         shm += sizeof(int);
         int i;
         for (i = 0; i < number; i++) {
@@ -92,6 +89,7 @@ copydata(evutil_socket_t fd, short what, void* ptr){
             bufferevent_write(bev, shm, length);
             shm += length;
         }
+        psemvalue(ctx->shm_ctx->read_lock, "after copy read_lock");
         sem_post(ctx->shm_ctx->read_lock);
     }
     event_add(ctx->timer, &msec);
@@ -105,6 +103,7 @@ readcb(struct bufferevent *bev, void *ptr, int server) {
     // when packet arrived, just copy it from input buffer to shared memory.
     unsigned char *shm = ctx->shm_ctx->shm_up;
     // get the write lock
+    psemvalue(ctx->shm_ctx->write_lock, "before send writelock");
     sem_wait(ctx->shm_ctx->write_lock);
     // TODO only send 1 packet 1 time?
     int number = 1;
@@ -118,9 +117,10 @@ readcb(struct bufferevent *bev, void *ptr, int server) {
     shm += sizeof(int);
     // since we can not determine the packet length easily, we need to write it at the front of SSL record.
     size_t read = bufferevent_read(bev, shm + sizeof(size_t), BUFSZ);
-        /*printf("read %zu data from network\n", read);*/
-        memcpy(shm, &read, sizeof(size_t));
+    /*printf("read %zu data from network\n", read);*/
+    memcpy(shm, &read, sizeof(size_t));
     // notify openssl process
+    psemvalue(ctx->shm_ctx->up, "before send up");
     sem_post(ctx->shm_ctx->up);
 }
 
@@ -147,7 +147,7 @@ eventcb(struct bufferevent *bev, short events, void *ptr){
     if (events & BEV_EVENT_CONNECTED) {
         printf("client socket: connected\n");
     } else if (events & BEV_EVENT_ERROR) {
-         /* An error occured while connecting. */
+        /* An error occured while connecting. */
         ctx->closed = 1;
     } else if (events & BEV_EVENT_EOF) {
         printf("socket is closed\n");
@@ -155,7 +155,7 @@ eventcb(struct bufferevent *bev, short events, void *ptr){
     }
 }
 
-void
+    void
 accept_conn_cb(struct evconnlistener *listener,
         evutil_socket_t fd, struct sockaddr *peeraddr, int peeraddrlen,
         void *ptr)
@@ -224,6 +224,7 @@ int main(void)
 
     // enable the up channel write permission.
     sem_post(proxy->shm_ctx->write_lock);
+    psemvalue(proxy->shm_ctx->write_lock, "writelock begin");
     event_base_dispatch(proxy->base);
     proxy_ctx_free(proxy);
     return 0;
