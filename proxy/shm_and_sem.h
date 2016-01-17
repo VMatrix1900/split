@@ -3,6 +3,7 @@
 
 #include <fcntl.h>
 #include <semaphore.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
@@ -32,6 +33,13 @@ struct shm_ctx_t {
     unsigned char *shm_up;
     unsigned char *shm_down;
 };
+
+void psemvalue(sem_t *sem, const char *name)
+{
+    int temp = 100;
+    sem_getvalue(sem, &temp);
+    printf("%s value is %d\n", name, temp);
+}
 
 int init_shm(struct shm_ctx_t *shm_ctx)
 {
@@ -69,7 +77,7 @@ int init_shm(struct shm_ctx_t *shm_ctx)
         return -1;
     }
     shm_ctx->shm_up = shmat(shm_ctx->shmid_up, NULL, 0);
-    if (shm_ctx->shm_up < 0) {
+    if (shm_ctx->shm_up == (void *)-1) {
         perror("shm_up fail.");
         return -1;
     }
@@ -81,7 +89,7 @@ int init_shm(struct shm_ctx_t *shm_ctx)
         return -1;
     }
     shm_ctx->shm_down = shmat(shm_ctx->shmid_down, NULL, 0);
-    if (shm_ctx->shm_down < 0) {
+    if (shm_ctx->shm_down == (void *)-1) {
         perror("shm_down fail.");
         return -1;
     }

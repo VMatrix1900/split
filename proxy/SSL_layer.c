@@ -20,26 +20,31 @@ void send_down(struct proxy *proxy, int server)
 {
     SSL *ssl = (server == 0) ? proxy->cli_ssl : proxy->serv_ssl;
     BIO *out_bio = SSL_get_wbio(ssl);
+    psemvalue(proxy->ctx->shm_ctx->read_lock, "before send down, read lock ");
     sem_wait(proxy->ctx->shm_ctx->read_lock);
-    int temp = 0;
-    sem_getvalue(proxy->ctx->shm_ctx->read_lock, &temp);
-    printf("read lock: %d\n", temp);
-    memcpy(proxy->down_pointer, &proxy->index, sizeof(int));
-    proxy->down_pointer += sizeof(int);
-    memcpy(proxy->down_pointer, &server, sizeof(int));
-    proxy->down_pointer += sizeof(int);
     size_t pending;
     size_t read = 0;
-    unsigned char *sizepointer = proxy->down_pointer;
+    unsigned char *index_pointer = proxy->down_pointer;
+    proxy->down_pointer += sizeof(int);
+    unsigned char *server_pointer = proxy->down_pointer;
+    proxy->down_pointer += sizeof(int);
+    unsigned char *size_pointer = proxy->down_pointer;
     proxy->down_pointer += sizeof(size_t);
     while ((pending = BIO_ctrl_pending(out_bio)) > 0) {
         /* begin send_down the packet to shared memory */
         read += BIO_read(out_bio, proxy->down_pointer, BUFSZ);
         proxy->down_pointer += read;
     }
-    memcpy(sizepointer, &read, sizeof(size_t));
-    /*printf("%s down: %zu\n", (0 == server) ? "client" : "server", read);*/
-    proxy->ctx->msgs_need_to_out += (read == 0) ? 0 : 1;
+    memcpy(size_pointer, &read, sizeof(size_t));
+    printf("%s down: %zu\n", (0 == server) ? "client" : "server", read);
+    if (read == 0) {
+        proxy->down_pointer = index_pointer;
+        sem_post(proxy->ctx->shm_ctx->read_lock);
+    } else {
+        memcpy(index_pointer, &proxy->index, sizeof(int));
+        memcpy(server_pointer, &server, sizeof(int));
+        proxy->msgs_need_to_out += 1;
+    }
 }
 
 // receive the ssl in_bio packet from shared memory, update the pointer.
@@ -52,7 +57,7 @@ unsigned char *receive_up(SSL *ssl, unsigned char *shm)
     shm += sizeof(size_t);
     // copy the packet to in_bio
     int written = BIO_write(in_bio, shm, length);
-    /*printf("up : %d\n", written);*/
+    printf("up : %d\n", written);
     shm += written;
     return shm;
 }
@@ -60,15 +65,6 @@ unsigned char *receive_up(SSL *ssl, unsigned char *shm)
 void forward_record(SSL *from, SSL *to, struct proxy *proxy)
 {
     char buf[BUFSZ] = {'0'};
-    /*int size = SSL_pending(from);*/
-    /*printf("ssl pending size:%d\n", size);*/
-    /*if (size > 0) {*/
-    /*    if (size != length) {*/
-    /*        printf("wierd! why it's not the same %d != %d", size, length);*/
-    /*    }*/
-    /*} else {*/
-    /*    return;*/
-    /*}*/
     char *write_head = buf;
     int size = 0;
     int length = 0;
@@ -76,9 +72,6 @@ void forward_record(SSL *from, SSL *to, struct proxy *proxy)
     while ((length = SSL_read(from, write_head, (BUFSZ)-size)) > 0) {
         write_head += length;
         size += length;
-        /*printf("SSL read: %d\n", length);*/
-        /*printf("bio pending size: %zu\n",
-         * BIO_ctrl_pending(SSL_get_rbio(from)));*/
         if (size == BUFSZ) {
             printf("BUFfer is full!\n");
             break;
@@ -92,7 +85,6 @@ void forward_record(SSL *from, SSL *to, struct proxy *proxy)
         printf("rehandshake happens");
         break;
     case SSL_ERROR_WANT_READ:
-        printf("ssl want read\n");
         break;
     case SSL_ERROR_ZERO_RETURN:
         printf("ssl clean closed\n");
@@ -160,6 +152,9 @@ unsigned char *peek_hello_msg(struct proxy *proxy, unsigned char *msg)
     size_t size = *(size_t *)msg;
     msg += sizeof(size_t);
     memcpy(proxy->client_hello_buf + proxy->hello_msg_length, msg, size);
+    // all record has been read into the SSL in_bio, now we can release the
+    // write lock
+    sem_post(proxy->ctx->shm_ctx->write_lock);
     proxy->hello_msg_length += size;
     msg += size;
     ssize_t length = proxy->hello_msg_length;
@@ -188,6 +183,7 @@ struct proxy *proxy_new(struct ssl_channel *ctx, int index)
     proxy->client_handshake_done = false;
     proxy->server_handshake_done = false;
     proxy->hello_msg_length = 0;
+    proxy->msgs_need_to_out = 0;
     proxy->client_received = 0;
     proxy->server_send = 0;
     proxy->down_pointer = ctx->shm_ctx->shm_down + sizeof(int);
@@ -207,8 +203,6 @@ struct ssl_channel *create_channel_ctx()
     channel->shm_ctx = malloc(sizeof(struct shm_ctx_t));
     init_shm(channel->shm_ctx);
     memset(channel->proxies, 0, MAXCONNS * sizeof(struct proxy *));
-    memset(channel->received, 0, MAXCONNS * sizeof(int));
-    channel->msgs_need_to_out = 0;
     channel->cacrt = NULL;
     channel->cakey = NULL;
     channel->key = ssl_key_genrsa(1024);
@@ -220,7 +214,7 @@ struct ssl_channel *create_channel_ctx()
     return channel;
 }
 
-int main(int argc, char *argv[])
+int main()
 {
     if (ssl_init() < 0) {
         printf("OpenSSL library init wrong!\n");
@@ -270,17 +264,9 @@ int main(int argc, char *argv[])
     unsigned char *shm_down = channel->shm_ctx->shm_down;
     struct proxy *proxy;
     // enable write to down channel
-    int temp = 0;
-    sem_getvalue(channel->shm_ctx->write_lock, &temp);
-    printf("read lock initialized:%d\n", temp);
     sem_post(channel->shm_ctx->read_lock);
-    sem_getvalue(channel->shm_ctx->write_lock, &temp);
-    printf("read lock post:%d\n", temp);
 
     while (!sem_wait(channel->shm_ctx->up)) {
-        int temp = 0;
-        sem_getvalue(channel->shm_ctx->up, &temp);
-        printf("up sem value: %d\n", temp);
         int number = *((int *)shm_up);
         shm_up += sizeof(int);
         int i;
@@ -307,68 +293,17 @@ int main(int argc, char *argv[])
             // determine send to client side or server side.
             shm_up += sizeof(int);
             if (1 == server) {
-                channel->received[index] = 2;
                 // first we need to copy the data to ssl in_bio/ hellomsg
                 // buffer.
                 if (!proxy->SNI_parsed) {
                     shm_up = peek_hello_msg(proxy, shm_up);
-                } else {
-                    shm_up = receive_up(proxy->serv_ssl, shm_up);
-                }
-            } else if (0 == server) {
-                channel->received[index] = 1;
-                shm_up = receive_up(proxy->cli_ssl, shm_up);
-            } else {
-                printf("Wrong server indicator!\n");
-                exit(-1);
-            }
-        }
-        // all record has been read into the SSL in_bio, now we can release the
-        // write lock
-        sem_post(channel->shm_ctx->write_lock);
-
-        for (int i = 0; i < MAXCONNS; i++) {
-            struct proxy *proxy = channel->proxies[i];
-            if (channel->received[i] == 1) {
-                // client received data;
-                if (!proxy->client_handshake_done) {
-                    int r = SSL_do_handshake(proxy->cli_ssl);
-                    if (r < 0) {
-                        send_down(proxy, 0);
-                        switch (SSL_get_error(proxy->cli_ssl, r)) {
-                        case SSL_ERROR_WANT_WRITE:
-                            break;
-                        case SSL_ERROR_WANT_READ:
-                            // need more data, do nothing;
-                            break;
-                        default:
-                            printf("Client handshake error!\n");
-                            ERR_print_errors_fp(stderr);
-                        }
-                    } else {
-                        printf("client handshake is done\n");
-                        proxy->client_handshake_done = true;
-                        pxy_srcssl_setup(proxy);
-                        // copy the hello msg from buffer to bio;
-                        BIO_write(SSL_get_rbio(proxy->serv_ssl),
-                                  proxy->client_hello_buf,
-                                  proxy->hello_msg_length);
-                        SSL_do_handshake(proxy->serv_ssl);
-                        // TODO make sure it's want write
-                        send_down(proxy, 1);
-                    }
-                } else if (!proxy->server_handshake_done) {
-                    // dst server push to client but server side ssl isn't ready
-                } else {
-                    forward_record(proxy->cli_ssl, proxy->serv_ssl, proxy);
-                }
-                channel->received[i] = 0;
-            } else if (channel->received[i] == 2) {
-                // server received data;
-                if (!proxy->SNI_parsed) {
-                    continue;
                 } else if (proxy->client_handshake_done &&
                            !proxy->server_handshake_done) {
+                    printf("server ");
+                    shm_up = receive_up(proxy->serv_ssl, shm_up);
+                    // all record has been read into the SSL in_bio, now we can
+                    // release the write lock
+                    sem_post(channel->shm_ctx->write_lock);
                     int r = SSL_do_handshake(proxy->serv_ssl);
                     send_down(proxy, 1);
                     if (r < 0) {
@@ -388,28 +323,70 @@ int main(int argc, char *argv[])
                         proxy->server_handshake_done = true;
                     }
                 } else if (proxy->server_handshake_done) {
+                    printf("server ");
+                    shm_up = receive_up(proxy->serv_ssl, shm_up);
+                    // all record has been read into the SSL in_bio, now we can
+                    // release the write lock
+                    sem_post(channel->shm_ctx->write_lock);
                     forward_record(proxy->serv_ssl, proxy->cli_ssl, proxy);
                 } else {
                     printf("wrong state!\n");
                     exit(-1);
                 }
-                channel->received[i] = 0;
+            } else if (0 == server) {
+                printf("client ");
+                shm_up = receive_up(proxy->cli_ssl, shm_up);
+                // all record has been read into the SSL in_bio, now we can
+                // release the write lock
+                sem_post(channel->shm_ctx->write_lock);
+                if (!proxy->client_handshake_done) {
+                    int r = SSL_do_handshake(proxy->cli_ssl);
+                    if (r < 0) {
+                        send_down(proxy, 0);
+                        switch (SSL_get_error(proxy->cli_ssl, r)) {
+                        case SSL_ERROR_WANT_WRITE:
+                            break;
+                        case SSL_ERROR_WANT_READ:
+                            // need more data, do nothing;
+                            break;
+                        default:
+                            printf("Client handshake error!\n");
+                            ERR_print_errors_fp(stderr);
+                        }
+                    } else {
+                        printf("client handshake is done\n");
+                        printf("SSL connected: %s %s\n",
+                               SSL_get_version(proxy->cli_ssl),
+                               SSL_get_cipher(proxy->cli_ssl));
+                        proxy->client_handshake_done = true;
+                        pxy_srcssl_setup(proxy);
+                        // copy the hello msg from buffer to bio;
+                        BIO_write(SSL_get_rbio(proxy->serv_ssl),
+                                  proxy->client_hello_buf,
+                                  proxy->hello_msg_length);
+                        SSL_do_handshake(proxy->serv_ssl);
+                        // TODO make sure it's want write
+                        send_down(proxy, 1);
+                    }
+                } else if (!proxy->server_handshake_done) {
+                    // dst server push to client but server side ssl isn't ready
+                } else {
+                    forward_record(proxy->cli_ssl, proxy->serv_ssl, proxy);
+                }
+            } else {
+                printf("Wrong server indicator:%d\n", server);
+                exit(-1);
             }
         }
 
         // now we finish the SSL record process; begin to send down the record.
         // reset the shm pointer
-        /*printf("%d msgs need to out\n", proxy->msgs_need_to_out);*/
-        if (channel->msgs_need_to_out) {
-            sem_getvalue(channel->shm_ctx->down, &temp);
-            printf("donw sem value: %d\n", temp);
-            shm_up = channel->shm_ctx->shm_up;
-            memcpy(shm_down, &channel->msgs_need_to_out, sizeof(int));
-            shm_down += sizeof(int);
+        if (proxy->msgs_need_to_out) {
+            memcpy(shm_down, &proxy->msgs_need_to_out, sizeof(int));
+            proxy->msgs_need_to_out = 0;
             sem_post(channel->shm_ctx->down);
         }
-        channel->msgs_need_to_out = 0;
-        shm_down = channel->shm_ctx->shm_down;
+        shm_up = channel->shm_ctx->shm_up;
         proxy->down_pointer = shm_down + sizeof(int);
     }
 
