@@ -13,18 +13,15 @@
 #include <sys/types.h>
 #include <sys/types.h>
 
+#include "channel.h"
 #include "proxy_tcp.h"
-#include "shm_and_sem.h"
+
+struct timeval msec = {0, 1};
 
 struct proxy_ctx *proxy_ctx_new()
 {
     struct proxy_ctx *proxy = malloc(sizeof(struct proxy_ctx));
-    proxy->shm_ctx = malloc(sizeof(struct shm_ctx_t));
-
-    if (init_shm(proxy->shm_ctx)) {
-        printf("init shm wrong!\n");
-        return NULL;
-    }
+    init_shm();
 
     printf("initiated shared memory\n");
     proxy->base = event_base_new();
@@ -57,72 +54,51 @@ void copydata(evutil_socket_t fd, short what, void *ptr)
 {
     // globol timer trigger this one ptr is proxy_ctx
     struct proxy_ctx *ctx = (struct proxy_ctx *)ptr;
-    unsigned char *shm = ctx->shm_ctx->shm_down;
     struct bufferevent *bev;
     struct pxy_conn *conn;
     event_del(ctx->timer);
-    if (!sem_trywait(ctx->shm_ctx->down)) {
-        // how many record to send?
-        int number = *((int *)shm);
-        shm += sizeof(int);
-        int i;
-        for (i = 0; i < number; i++) {
-            int index = *((int *)shm);
-            shm += sizeof(int);
-            conn = ctx->conns[index];
-            int server = *((int *)shm);
-            shm += sizeof(int);
-            // determine send to client side or server side.
-            if (1 == server) {
-                printf("server send down:");
-                bev = conn->serv_bev;
-            } else if (0 == server) {
-                printf("client send down:");
-                bev = conn->cli_bev;
-            } else {
-                printf("Wrong server indicator:%d\n", server);
-                exit(1);
-            }
-            size_t length = *((size_t *)shm);
-            printf("packet size:%zu\n", length);
-            shm += sizeof(size_t);
-            bufferevent_write(bev, shm, length);
-            shm += length;
+    struct packet_info pi;
+    pi.valid = false;
+    pi = sharedmem_pull_packet_info();
+    if (pi.valid) {
+        int index = pi.id;
+        conn = ctx->conns[index];
+        int server = pi.server;
+        // determine send to client side or server side.
+        if (1 == server) {
+            /*printf("server send down:");*/
+            bev = conn->serv_bev;
+        } else if (0 == server) {
+            /*printf("client send down:");*/
+            bev = conn->cli_bev;
+        } else {
+            printf("Wrong server indicator:%d\n", server);
+            exit(1);
         }
-        psemvalue(ctx->shm_ctx->read_lock, "after copy read_lock");
-        sem_post(ctx->shm_ctx->read_lock);
+        /*printf("packet size:%zu\n", length);*/
+        char **packet_buffer = (char **)sharedmem_pull_addr(pi.address);
+        bufferevent_write(bev, *packet_buffer, pi.size);
     }
     event_add(ctx->timer, &msec);
 }
 
 void readcb(struct bufferevent *bev, void *ptr, int server)
 {
-    // tag the data indicate it's server side or client side.
-    // only when the data is processed by ssl process
     struct pxy_conn *ctx = (struct pxy_conn *)ptr;
-    // when packet arrived, just copy it from input buffer to shared memory.
-    unsigned char *shm = ctx->shm_ctx->shm_up;
-    // get the write lock
-    psemvalue(ctx->shm_ctx->write_lock, "before send writelock");
-    sem_wait(ctx->shm_ctx->write_lock);
-    // TODO only send 1 packet 1 time?
-    int number = 1;
-    memcpy(shm, &number, sizeof(int));
-    shm += sizeof(int);
-    // tag the index
-    memcpy(shm, &(ctx->index), sizeof(int));
-    shm += sizeof(int);
-    // tag the server.
-    memcpy(shm, &server, sizeof(int));
-    shm += sizeof(int);
-    // since we can not determine the packet length easily, we need to write it
-    // at the front of SSL record.
-    size_t read = bufferevent_read(bev, shm + sizeof(size_t), BUFSZ);
+
+    struct packet_info pi;
+    pi.id = ctx->index;
+    pi.server = server;
+    pi.valid = true;
+    int avali_size = 0;
+    char **write_pointer = NULL;
+    write_pointer = (char **)sharedmem_get_addr(&avali_size);
+    pi.size = bufferevent_read(bev, *write_pointer, avali_size);
+    while (sharedmem_add_packet_info(pi, (void *)(*write_pointer)) < 0) {
+        ;
+    }
     /*printf("read %zu data from network\n", read);*/
-    memcpy(shm, &read, sizeof(size_t));
-    // notify openssl process
-    psemvalue(ctx->shm_ctx->up, "before send up");
-    sem_post(ctx->shm_ctx->up);
+    (*write_pointer) += pi.size;
 }
 
 void cli_readcb(struct bufferevent *bev, void *ptr)
@@ -223,9 +199,6 @@ int main(void)
         return 1;
     }
 
-    // enable the up channel write permission.
-    sem_post(proxy->shm_ctx->write_lock);
-    psemvalue(proxy->shm_ctx->write_lock, "writelock begin");
     event_base_dispatch(proxy->base);
     proxy_ctx_free(proxy);
     return 0;

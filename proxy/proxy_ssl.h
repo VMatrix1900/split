@@ -2,7 +2,7 @@
 #include <stdbool.h>
 
 #define MAXCONNS 65536
-struct ssl_channel {
+struct proxy_ctx {
     int conns;
     X509 *cacrt;             // store the cacrt for all server ssl connection
     EVP_PKEY *cakey;         // store the ca key
@@ -15,7 +15,7 @@ struct ssl_channel {
 struct proxy {
     int client_received;
     int server_send;
-    struct ssl_channel *ctx;
+    struct proxy_ctx *ctx;
     X509 *origcrt;
     int index;
     char *sni;
@@ -32,7 +32,7 @@ struct proxy {
 
 int init_ssl_bio(SSL *);
 SSL *pxy_dstssl_setup();
-struct proxy *proxy_new(struct ssl_channel *, int);
+struct proxy *proxy_new(struct proxy_ctx *, int);
 void proxy_shutdown_free(struct proxy *);
 void notify_tcp();
 
@@ -47,5 +47,5 @@ SSL_CTX *pxy_srcsslctx_create(struct proxy *, X509 *, STACK_OF(X509) *,
 SSL *pxy_srcssl_create(struct proxy *);
 void pxy_srcssl_setup(struct proxy *);
 
-struct ssl_channel *create_channel_ctx();
+struct proxy_ctx *create_channel_ctx();
 unsigned char *peek_hello_msg(struct proxy *, unsigned char *);

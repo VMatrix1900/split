@@ -175,7 +175,7 @@ unsigned char *peek_hello_msg(struct proxy *proxy, unsigned char *msg)
     return msg;
 }
 
-struct proxy *proxy_new(struct ssl_channel *ctx, int index)
+struct proxy *proxy_new(struct proxy_ctx *ctx, int index)
 {
     struct proxy *proxy = malloc(sizeof(struct proxy));
     proxy->ctx = ctx;
@@ -186,7 +186,7 @@ struct proxy *proxy_new(struct ssl_channel *ctx, int index)
     proxy->msgs_need_to_out = 0;
     proxy->client_received = 0;
     proxy->server_send = 0;
-    proxy->down_pointer = ctx->shm_ctx->shm_down + sizeof(int);
+    proxy->down_pointer = ctx->shm_ctx->down_channel + sizeof(int);
     proxy->cli_ssl = pxy_dstssl_setup();
     if (!proxy->cli_ssl) {
         return NULL;
@@ -197,9 +197,9 @@ struct proxy *proxy_new(struct ssl_channel *ctx, int index)
     return proxy;
 }
 
-struct ssl_channel *create_channel_ctx()
+struct proxy_ctx *create_channel_ctx()
 {
-    struct ssl_channel *channel = malloc(sizeof(struct ssl_channel));
+    struct proxy_ctx *channel = malloc(sizeof(struct proxy_ctx));
     channel->shm_ctx = malloc(sizeof(struct shm_ctx_t));
     init_shm(channel->shm_ctx);
     memset(channel->proxies, 0, MAXCONNS * sizeof(struct proxy *));
@@ -231,7 +231,7 @@ int main()
         exit(-1);
     }
 
-    struct ssl_channel *channel = create_channel_ctx();
+    struct proxy_ctx *channel = create_channel_ctx();
     if (!channel) {
         printf("channel initiate wrong!\n");
         exit(-1);
@@ -260,22 +260,22 @@ int main()
         printf("CA cert does not match key.\n");
         exit(-1);
     }
-    unsigned char *shm_up = channel->shm_ctx->shm_up;
-    unsigned char *shm_down = channel->shm_ctx->shm_down;
+    unsigned char *up_channel = channel->shm_ctx->up_channel;
+    unsigned char *down_channel = channel->shm_ctx->down_channel;
     struct proxy *proxy;
     // enable write to down channel
     sem_post(channel->shm_ctx->read_lock);
 
     while (!sem_wait(channel->shm_ctx->up)) {
-        int number = *((int *)shm_up);
-        shm_up += sizeof(int);
+        int number = *((int *)up_channel);
+        up_channel += sizeof(int);
         int i;
         // actually now the number is always 1; because every time TCP layer
         // receive the msg, it will trigger this process;
         for (i = 0; i < number; i++) {
             // find the proxy, create one if needed;
-            int index = *((int *)shm_up);
-            shm_up += sizeof(int);
+            int index = *((int *)up_channel);
+            up_channel += sizeof(int);
             if (channel->proxies[index]) {
                 proxy = channel->proxies[index];
             } else {
@@ -289,18 +289,18 @@ int main()
                     exit(-1);
                 }
             }
-            int server = *((int *)shm_up);
+            int server = *((int *)up_channel);
             // determine send to client side or server side.
-            shm_up += sizeof(int);
+            up_channel += sizeof(int);
             if (1 == server) {
                 // first we need to copy the data to ssl in_bio/ hellomsg
                 // buffer.
                 if (!proxy->SNI_parsed) {
-                    shm_up = peek_hello_msg(proxy, shm_up);
+                    up_channel = peek_hello_msg(proxy, up_channel);
                 } else if (proxy->client_handshake_done &&
                            !proxy->server_handshake_done) {
                     printf("server ");
-                    shm_up = receive_up(proxy->serv_ssl, shm_up);
+                    up_channel = receive_up(proxy->serv_ssl, up_channel);
                     // all record has been read into the SSL in_bio, now we can
                     // release the write lock
                     sem_post(channel->shm_ctx->write_lock);
@@ -324,7 +324,7 @@ int main()
                     }
                 } else if (proxy->server_handshake_done) {
                     printf("server ");
-                    shm_up = receive_up(proxy->serv_ssl, shm_up);
+                    up_channel = receive_up(proxy->serv_ssl, up_channel);
                     // all record has been read into the SSL in_bio, now we can
                     // release the write lock
                     sem_post(channel->shm_ctx->write_lock);
@@ -335,7 +335,7 @@ int main()
                 }
             } else if (0 == server) {
                 printf("client ");
-                shm_up = receive_up(proxy->cli_ssl, shm_up);
+                up_channel = receive_up(proxy->cli_ssl, up_channel);
                 // all record has been read into the SSL in_bio, now we can
                 // release the write lock
                 sem_post(channel->shm_ctx->write_lock);
@@ -382,12 +382,12 @@ int main()
         // now we finish the SSL record process; begin to send down the record.
         // reset the shm pointer
         if (proxy->msgs_need_to_out) {
-            memcpy(shm_down, &proxy->msgs_need_to_out, sizeof(int));
+            memcpy(down_channel, &proxy->msgs_need_to_out, sizeof(int));
             proxy->msgs_need_to_out = 0;
             sem_post(channel->shm_ctx->down);
         }
-        shm_up = channel->shm_ctx->shm_up;
-        proxy->down_pointer = shm_down + sizeof(int);
+        up_channel = channel->shm_ctx->up_channel;
+        proxy->down_pointer = down_channel + sizeof(int);
     }
 
     return 0;

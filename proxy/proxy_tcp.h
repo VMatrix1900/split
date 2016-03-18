@@ -16,7 +16,6 @@ struct pxy_conn {
 struct proxy_ctx {
     int counts;
     struct pxy_conn *conns[MAXCONNS];
-    struct shm_ctx_t *shm_ctx;
     struct event *timer;
     struct event_base *base;
 };
