@@ -9,7 +9,6 @@ struct pxy_conn {
     struct bufferevent *cli_bev;
     struct bufferevent *serv_bev;
     struct event *timer;
-    struct shm_ctx_t *shm_ctx;
     struct proxy_ctx *parent;
 };
 

@@ -16,15 +16,18 @@ enum packet_type { client, server };
 
 struct packet_info {
     unsigned long addr;
-    enum packet_type server;
-    int session_index;
+    enum packet_type side;
+    int id;
     int length;
     bool valid;
 };
 
 struct channel {
+    int read_head;
+    int write_head;
     struct packet_info circular[CIRCULAR_SZ];
     char packet_buffer[BUF_SZ];
+    char *read, write;
 };
 
 // store the info about the semophores and shared memory.
@@ -38,5 +41,12 @@ struct shm_ctx_t {
 struct shm_ctx_t *shm_ctx = NULL;
 
 int init_shm();
-
 int destroy_shm();
+struct packet_info PullPacketInfo(struct channel *channel);
+struct packet_info PullFromSSL();
+struct packet_info PullFromTCP();
+int PushPacketInfo(struct packet_info pi, struct channel *channel);
+int PushToSSL(struct packet_info pi, void *write_pointer);
+int PushToTCP(struct packet_info pi, void *write_pointer);
+void ** GetBufferAddress(int *avliable);
+

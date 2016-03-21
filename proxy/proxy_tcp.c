@@ -26,7 +26,6 @@ struct pxy_conn *pxy_conn_new(struct proxy_ctx *ctx)
     conn->closed = 0;
     conn->cli_bev = NULL;
     conn->serv_bev = NULL;
-    conn->shm_ctx = ctx->shm_ctx;
     conn->index = find_next_slot(ctx);
     if (conn->index == -1) {
         printf("pxy conn is full!\n");

@@ -58,17 +58,14 @@ void copydata(evutil_socket_t fd, short what, void *ptr)
     struct pxy_conn *conn;
     event_del(ctx->timer);
     struct packet_info pi;
-    pi.valid = false;
-    pi = sharedmem_pull_packet_info();
+    pi = PullFromSSL();
     if (pi.valid) {
-        int index = pi.id;
-        conn = ctx->conns[index];
-        int server = pi.server;
-        // determine send to client side or server side.
-        if (1 == server) {
+        conn = ctx->conns[pi.id];
+        // send to client side or server side.
+        if (pi.side == server) {
             /*printf("server send down:");*/
             bev = conn->serv_bev;
-        } else if (0 == server) {
+        } else if (pi.side == client) {
             /*printf("client send down:");*/
             bev = conn->cli_bev;
         } else {
@@ -94,7 +91,7 @@ void readcb(struct bufferevent *bev, void *ptr, int server)
     char **write_pointer = NULL;
     write_pointer = (char **)sharedmem_get_addr(&avali_size);
     pi.size = bufferevent_read(bev, *write_pointer, avali_size);
-    while (sharedmem_add_packet_info(pi, (void *)(*write_pointer)) < 0) {
+    while (PushToSSL(pi, (void *)(*write_pointer)) < 0) {
         ;
     }
     /*printf("read %zu data from network\n", read);*/

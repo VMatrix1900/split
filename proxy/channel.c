@@ -1,4 +1,5 @@
 #include "channel.h"
+#include <asm/io.h>
 #include <semaphore.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -49,4 +50,37 @@ int destroy_shm()
         return -1;
     }
     return 0;
+}
+
+struct packet_info PullPacketInfo(struct channel *channel) {
+    struct packet_info pi = channel->circular[channel->read_head];
+    if (pi.valid) {
+        channel->circular[channel->read_head].valid = false;
+        channel->read_head = (channel->read_head + 1) % CIRCULAR_SZ;
+    }
+    return pi;
+}
+
+struct packet_info PullFromSSL() {
+    return PullPacketInfo(shm_ctx->down_channel);
+}
+
+struct packet_info PullFromTCP() {
+    return PullPacketInfo(shm_ctx->up_channel);
+}
+
+int PushPacketInfo(struct packet_info pi, struct channel *channel) {
+    channel->circular[channel->write_head] = pi;
+    channel->write_head = (channel->write_head + 1) % CIRCULAR_SZ;
+    return 0;
+}
+
+int PushToSSL(struct packet_info pi,void* write_pointer) {
+    pi.addr = virt_to_phys(write_pointer);
+    return PushPacketInfo(pi,shm_ctx->up_channel);
+}
+
+int PushToTCP(struct packet_info pi,void* write_pointer) {
+    pi.addr = virt_to_phys(write_pointer);
+    return PushPacketInfo(pi,shm_ctx->down_channel);
 }
