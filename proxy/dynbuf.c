@@ -41,15 +41,15 @@
  */
 dynbuf_t *dynbuf_new_alloc(size_t sz)
 {
-    dynbuf_t *db;
+  dynbuf_t *db;
 
-    if (!(db = malloc(sizeof(dynbuf_t)))) return NULL;
-    if (!(db->buf = malloc(sz))) {
-        free(db);
-        return NULL;
-    }
-    db->sz = sz;
-    return db;
+  if (!(db = malloc(sizeof(dynbuf_t)))) return NULL;
+  if (!(db->buf = malloc(sz))) {
+    free(db);
+    return NULL;
+  }
+  db->sz = sz;
+  return db;
 }
 
 /*
@@ -57,16 +57,16 @@ dynbuf_t *dynbuf_new_alloc(size_t sz)
  */
 dynbuf_t *dynbuf_new_copy(const unsigned char *buf, const size_t sz)
 {
-    dynbuf_t *db;
+  dynbuf_t *db;
 
-    if (!(db = malloc(sizeof(dynbuf_t)))) return NULL;
-    if (!(db->buf = malloc(sz))) {
-        free(db);
-        return NULL;
-    }
-    memcpy(db->buf, buf, sz);
-    db->sz = sz;
-    return db;
+  if (!(db = malloc(sizeof(dynbuf_t)))) return NULL;
+  if (!(db->buf = malloc(sz))) {
+    free(db);
+    return NULL;
+  }
+  memcpy(db->buf, buf, sz);
+  db->sz = sz;
+  return db;
 }
 
 /*
@@ -75,32 +75,32 @@ dynbuf_t *dynbuf_new_copy(const unsigned char *buf, const size_t sz)
  */
 dynbuf_t *dynbuf_new_file(const char *filename)
 {
-    dynbuf_t *db;
-    FILE *f;
+  dynbuf_t *db;
+  FILE *f;
 
-    if (!(db = malloc(sizeof(dynbuf_t)))) return NULL;
+  if (!(db = malloc(sizeof(dynbuf_t)))) return NULL;
 
-    f = fopen(filename, "rb");
-    if (!f) {
-        free(db);
-        return NULL;
-    }
-    fseek(f, 0, SEEK_END);
-    db->sz = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (!(db->buf = malloc(db->sz))) {
-        free(db);
-        fclose(f);
-        return NULL;
-    }
-    if (fread(db->buf, db->sz, 1, f) != 1) {
-        free(db->buf);
-        free(db);
-        fclose(f);
-        return NULL;
-    }
+  f = fopen(filename, "rb");
+  if (!f) {
+    free(db);
+    return NULL;
+  }
+  fseek(f, 0, SEEK_END);
+  db->sz = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  if (!(db->buf = malloc(db->sz))) {
+    free(db);
     fclose(f);
-    return db;
+    return NULL;
+  }
+  if (fread(db->buf, db->sz, 1, f) != 1) {
+    free(db->buf);
+    free(db);
+    fclose(f);
+    return NULL;
+  }
+  fclose(f);
+  return db;
 }
 
 /*
@@ -109,12 +109,12 @@ dynbuf_t *dynbuf_new_file(const char *filename)
  */
 dynbuf_t *dynbuf_new(unsigned char *buf, size_t sz)
 {
-    dynbuf_t *db;
+  dynbuf_t *db;
 
-    if (!(db = malloc(sizeof(dynbuf_t)))) return NULL;
-    db->buf = buf;
-    db->sz = sz;
-    return db;
+  if (!(db = malloc(sizeof(dynbuf_t)))) return NULL;
+  db->buf = buf;
+  db->sz = sz;
+  return db;
 }
 
 /*
@@ -122,8 +122,8 @@ dynbuf_t *dynbuf_new(unsigned char *buf, size_t sz)
  */
 void dynbuf_free(dynbuf_t *db)
 {
-    free(db->buf);
-    free(db);
+  free(db->buf);
+  free(db);
 }
 
 /* vim: set noet ft=c: */

@@ -2,21 +2,21 @@
 #include "constants.h"
 
 struct pxy_conn {
-    int closed;
-    struct sockaddr_storage dstsock;
-    socklen_t dstsocklen;
-    int index;
-    struct bufferevent *cli_bev;
-    struct bufferevent *serv_bev;
-    struct event *timer;
-    struct proxy_ctx *parent;
+  int closed;
+  struct sockaddr_storage dstsock;
+  socklen_t dstsocklen;
+  int index;
+  struct bufferevent *cli_bev;
+  struct bufferevent *serv_bev;
+  struct event *timer;
+  struct proxy_ctx *parent;
 };
 
 struct proxy_ctx {
-    int counts;
-    struct pxy_conn *conns[MAXCONNS];
-    struct event *timer;
-    struct event_base *base;
+  int counts;
+  struct pxy_conn *conns[MAXCONNS];
+  struct event *timer;
+  struct event_base *base;
 };
 
 int find_next_slot(struct proxy_ctx *);

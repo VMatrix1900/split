@@ -58,29 +58,29 @@ static int err_mode = LOG_ERR_MODE_STDERR;
 
 static ssize_t log_err_writecb(UNUSED void *fh, const void *buf, size_t sz)
 {
-    switch (err_mode) {
-    case LOG_ERR_MODE_STDERR:
-        return fwrite(buf, sz - 1, 1, stderr);
-    case LOG_ERR_MODE_SYSLOG:
-        syslog(LOG_ERR, "%s", (const char *)buf);
-        return 0;
-    }
-    return -1;
+  switch (err_mode) {
+  case LOG_ERR_MODE_STDERR:
+    return fwrite(buf, sz - 1, 1, stderr);
+  case LOG_ERR_MODE_SYSLOG:
+    syslog(LOG_ERR, "%s", (const char *)buf);
+    return 0;
+  }
+  return -1;
 }
 
 int log_err_printf(const char *fmt, ...)
 {
-    va_list ap;
-    char *buf;
-    int rv;
+  va_list ap;
+  char *buf;
+  int rv;
 
-    va_start(ap, fmt);
-    rv = vasprintf(&buf, fmt, ap);
-    va_end(ap);
-    if (rv < 0) return -1;
-    log_err_writecb(NULL, (unsigned char *)buf, strlen(buf) + 1);
-    free(buf);
-    return 0;
+  va_start(ap, fmt);
+  rv = vasprintf(&buf, fmt, ap);
+  va_end(ap);
+  if (rv < 0) return -1;
+  log_err_writecb(NULL, (unsigned char *)buf, strlen(buf) + 1);
+  free(buf);
+  return 0;
 }
 
 void log_err_mode(int mode) { err_mode = mode; }
@@ -94,27 +94,27 @@ static int dbg_mode = LOG_DBG_MODE_NONE;
 
 int log_dbg_write_free(void *buf, size_t sz)
 {
-    if (dbg_mode == LOG_DBG_MODE_NONE) return 0;
+  if (dbg_mode == LOG_DBG_MODE_NONE) return 0;
 
-    log_err_writecb(NULL, buf, sz);
-    free(buf);
-    return 0;
+  log_err_writecb(NULL, buf, sz);
+  free(buf);
+  return 0;
 }
 
 int log_dbg_print_free(char *s) { return log_dbg_write_free(s, strlen(s) + 1); }
 int log_dbg_printf(const char *fmt, ...)
 {
-    va_list ap;
-    char *buf;
-    int rv;
+  va_list ap;
+  char *buf;
+  int rv;
 
-    if (dbg_mode == LOG_DBG_MODE_NONE) return 0;
+  if (dbg_mode == LOG_DBG_MODE_NONE) return 0;
 
-    va_start(ap, fmt);
-    rv = vasprintf(&buf, fmt, ap);
-    va_end(ap);
-    if (rv < 0) return -1;
-    return log_dbg_print_free(buf);
+  va_start(ap, fmt);
+  rv = vasprintf(&buf, fmt, ap);
+  va_end(ap);
+  if (rv < 0) return -1;
+  return log_dbg_print_free(buf);
 }
 
 void log_dbg_mode(int mode) { dbg_mode = mode; }

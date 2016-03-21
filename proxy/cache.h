@@ -52,21 +52,21 @@ typedef cache_val_t (*cache_unpackverify_val_cb_t)(cache_val_t, int);
 typedef void (*cache_fini_cb_t)(void);
 
 typedef struct cache {
-    pthread_mutex_t mutex;
+  pthread_mutex_t mutex;
 
-    cache_begin_cb_t begin_cb;
-    cache_end_cb_t end_cb;
-    cache_exist_cb_t exist_cb;
-    cache_del_cb_t del_cb;
-    cache_get_cb_t get_cb;
-    cache_put_cb_t put_cb;
-    cache_free_key_cb_t free_key_cb;
-    cache_free_val_cb_t free_val_cb;
-    cache_get_key_cb_t get_key_cb;
-    cache_get_val_cb_t get_val_cb;
-    cache_set_val_cb_t set_val_cb;
-    cache_unpackverify_val_cb_t unpackverify_val_cb;
-    cache_fini_cb_t fini_cb;
+  cache_begin_cb_t begin_cb;
+  cache_end_cb_t end_cb;
+  cache_exist_cb_t exist_cb;
+  cache_del_cb_t del_cb;
+  cache_get_cb_t get_cb;
+  cache_put_cb_t put_cb;
+  cache_free_key_cb_t free_key_cb;
+  cache_free_val_cb_t free_val_cb;
+  cache_get_key_cb_t get_key_cb;
+  cache_get_val_cb_t get_val_cb;
+  cache_set_val_cb_t set_val_cb;
+  cache_unpackverify_val_cb_t unpackverify_val_cb;
+  cache_fini_cb_t fini_cb;
 } cache_t;
 
 typedef void (*cache_init_cb_t)(struct cache *);

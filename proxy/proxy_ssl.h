@@ -1,33 +1,31 @@
 #include <openssl/ssl.h>
 #include <stdbool.h>
+#include "channel.h"
 
 #define MAXCONNS 65536
 struct proxy_ctx {
-    int conns;
-    X509 *cacrt;             // store the cacrt for all server ssl connection
-    EVP_PKEY *cakey;         // store the ca key
-    EVP_PKEY *key;           // store the public key for all fake certificate.
-    STACK_OF(X509) * chain;  // store the ca chain.
-    struct proxy *proxies[MAXCONNS];
-    struct shm_ctx_t *shm_ctx;
+  int conns;
+  X509 *cacrt;             // store the cacrt for all server ssl connection
+  EVP_PKEY *cakey;         // store the ca key
+  EVP_PKEY *key;           // store the public key for all fake certificate.
+  STACK_OF(X509) * chain;  // store the ca chain.
+  struct proxy *proxies[MAXCONNS];
 };
 
 struct proxy {
-    int client_received;
-    int server_send;
-    struct proxy_ctx *ctx;
-    X509 *origcrt;
-    int index;
-    char *sni;
-    SSL *cli_ssl;
-    SSL *serv_ssl;
-    unsigned char client_hello_buf[1024];
-    ssize_t hello_msg_length;
-    bool SNI_parsed;
-    bool client_handshake_done;
-    bool server_handshake_done;
-    int msgs_need_to_out;
-    unsigned char *down_pointer;
+  int client_received;
+  int server_send;
+  struct proxy_ctx *ctx;
+  X509 *origcrt;
+  int index;
+  char *sni;
+  SSL *cli_ssl;
+  SSL *serv_ssl;
+  unsigned char client_hello_buf[1024];
+  ssize_t hello_msg_length;
+  bool SNI_parsed;
+  bool client_handshake_done;
+  bool server_handshake_done;
 };
 
 int init_ssl_bio(SSL *);
@@ -36,6 +34,8 @@ struct proxy *proxy_new(struct proxy_ctx *, int);
 void proxy_shutdown_free(struct proxy *);
 void notify_tcp();
 
+void send_down(struct proxy *, enum packet_type);
+void receive_up(struct proxy *, struct packet_info);
 void forward_record(SSL *, SSL *, struct proxy *);
 
 int pxy_ossl_sessnew_cb(SSL *, SSL_SESSION *);
@@ -48,4 +48,4 @@ SSL *pxy_srcssl_create(struct proxy *);
 void pxy_srcssl_setup(struct proxy *);
 
 struct proxy_ctx *create_channel_ctx();
-unsigned char *peek_hello_msg(struct proxy *, unsigned char *);
+void peek_hello_msg(struct proxy *, struct packet_info *);

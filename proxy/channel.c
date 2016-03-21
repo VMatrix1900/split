@@ -1,5 +1,4 @@
 #include "channel.h"
-#include <asm/io.h>
 #include <semaphore.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,98 +9,128 @@
 
 int init_shm()
 {
-    // create the shared memory segment
-    shm_ctx = malloc(sizeof(struct shm_ctx_t));
-    int shm_sz = sizeof(struct channel);
-    shm_ctx->shmid_up = shmget(key_up, shm_sz, IPC_CREAT | 0666);
-    if (shm_ctx->shmid_up < 0) {
-        perror("socket:failure in shmget");
-        return -1;
-    }
-    shm_ctx->up_channel = shmat(shm_ctx->shmid_up, NULL, 0);
-    if (shm_ctx->up_channel == (void *)-1) {
-        perror("up_channel fail.");
-        return -1;
-    }
-    memset(shm_ctx->up_channel, 0, shm_sz);
+  // create the shared memory segment
+  shm_ctx = malloc(sizeof(struct shm_ctx_t));
+  int shm_sz = sizeof(struct channel);
+  shm_ctx->shmid_up = shmget(key_up, shm_sz, IPC_CREAT | 0666);
+  if (shm_ctx->shmid_up < 0) {
+    perror("socket:failure in shmget");
+    return -1;
+  }
+  shm_ctx->up_channel = shmat(shm_ctx->shmid_up, NULL, 0);
+  if (shm_ctx->up_channel == (void *)-1) {
+    perror("up_channel fail.");
+    return -1;
+  }
+  memset(shm_ctx->up_channel, 0, shm_sz);
 
-    shm_ctx->shmid_down = shmget(key_down, shm_sz, IPC_CREAT | 0666);
-    if (shm_ctx->shmid_down < 0) {
-        perror("socket:failure in shmget");
-        return -1;
-    }
-    shm_ctx->down_channel = shmat(shm_ctx->shmid_down, NULL, 0);
-    if (shm_ctx->down_channel == (void *)-1) {
-        perror("down_channel fail.");
-        return -1;
-    }
-    memset(shm_ctx->down_channel, 0, shm_sz);
-    return 0;
+  shm_ctx->shmid_down = shmget(key_down, shm_sz, IPC_CREAT | 0666);
+  if (shm_ctx->shmid_down < 0) {
+    perror("socket:failure in shmget");
+    return -1;
+  }
+  shm_ctx->down_channel = shmat(shm_ctx->shmid_down, NULL, 0);
+  if (shm_ctx->down_channel == (void *)-1) {
+    perror("down_channel fail.");
+    return -1;
+  }
+  memset(shm_ctx->down_channel, 0, shm_sz);
+  return 0;
 }
 
 int destroy_shm()
 {
-    if (shmdt(shm_ctx->up_channel) < 0) {
-        perror("up_channel detach wrong!");
-        return -1;
-    }
-    if (shmdt(shm_ctx->down_channel) < 0) {
-        perror("down_channel detach wrong!");
-        return -1;
-    }
+  if (shmdt(shm_ctx->up_channel) < 0) {
+    perror("up_channel detach wrong!");
+    return -1;
+  }
+  if (shmdt(shm_ctx->down_channel) < 0) {
+    perror("down_channel detach wrong!");
+    return -1;
+  }
+  return 0;
+}
+
+struct packet_info _pullPackeInfo(struct channel *channel)
+{
+  struct packet_info pi = channel->circular[channel->read_head];
+  if (pi.valid) {
+    channel->circular[channel->read_head].valid = false;
+    channel->read_head = (channel->read_head + 1) % CIRCULAR_SZ;
+  }
+  return pi;
+}
+
+struct packet_info PullFromSSL()
+{
+  return _pullPacketInfo(shm_ctx->down_channel);
+}
+
+struct packet_info PullFromTCP()
+{
+  return _pullPacketInfo(shm_ctx->up_channel);
+}
+void *_getReadPointer(struct channel *channel)
+{
+  return channel->packet_buffer + channel->read;
+}
+
+void *GetToSSLReadPointer() { return _getReadPointer(shm_ctx->up_channel); }
+void *GetToTCPReadPointer() { return _getReadPointer(shm_ctx->down_channel); }
+void _updateReadPointer(struct channel *channel, int delta)
+{
+  channel->read = (channel->read + delta) % BUF_SZ;
+}
+
+void UpdateToSSLReadPointer(int delta)
+{
+  _updateReadPointer(shm_ctx->up_channel, delta);
+}
+
+void UpdateToTCPReadPointer(int delta)
+{
+  _updateReadPointer(shm_ctx->down_channel, delta);
+}
+
+int _pushPacketInfo(struct packet_info pi, struct channel *channel)
+{
+  if (channel->circular[channel->write_head]
+          .valid) {  // circular buffer is full
+    return -1;
+  } else {
+    channel->circular[channel->write_head] = pi;
+    channel->write_head = (channel->write_head + 1) % CIRCULAR_SZ;
+    channel->write = (channel->write + pi.length) % BUF_SZ;
     return 0;
-}
-
-struct packet_info PullPacketInfo(struct channel *channel)
-{
-    struct packet_info pi = channel->circular[channel->read_head];
-    if (pi.valid) {
-        channel->circular[channel->read_head].valid = false;
-        channel->read_head = (channel->read_head + 1) % CIRCULAR_SZ;
-    }
-    return pi;
-}
-
-struct packet_info PullFromSSL(char *temp)
-{
-    return PullPacketInfo(shm_ctx->down_channel);
-}
-
-struct packet_info PullFromTCP() { return PullPacketInfo(shm_ctx->up_channel); }
-
-int PushPacketInfo(struct packet_info pi, struct channel *channel)
-{
-    if (channel->circular[channel->write_head].valid) {// circular buffer is full
-        return -1;
-    } else {
-        channel->circular[channel->write_head] = pi;
-        channel->write_head = (channel->write_head + 1) % CIRCULAR_SZ;
-        channel->write = (channel->wirte + pi.size) % CIRCULAR_SZ;
-        return 0;
-    }
+  }
 }
 
 int PushToSSL(struct packet_info pi, void *write_pointer)
 {
-    pi.addr = virt_to_phys(write_pointer);
-    return PushPacketInfo(pi, shm_ctx->up_channel);
+  pi.addr_offset = write_pointer - (void *)shm_ctx->up_channel->packet_buffer;
+  return _pushPacketInfo(pi, shm_ctx->up_channel);
 }
 
 int PushToTCP(struct packet_info pi, void *write_pointer)
 {
-    pi.addr = virt_to_phys(write_pointer);
-    return PushPacketInfo(pi, shm_ctx->down_channel);
+  pi.addr_offset = write_pointer - (void *)shm_ctx->down_channel->packet_buffer;
+  return _pushPacketInfo(pi, shm_ctx->down_channel);
 }
 
-char * GetToSSLBufferAddr(int * avaliable) {
-    return GetBufferAddress(shm_ctx->up_channel, int *avaliable);
+void *GetToSSLBufferAddr(int *avaliable)
+{
+  return _getBufferAddress(shm_ctx->up_channel, avaliable);
 }
 
-char * GetToTCPBufferAddr(int * avaliable) {
-    return GetBufferAddress(shm_ctx->down_channel, int *avaliable);
+void *GetToTCPBufferAddr(int *avaliable)
+{
+  return _getBufferAddress(shm_ctx->down_channel, avaliable);
 }
 
-char * GetBufferAddress(struct channel *channel, int* avaliable) {
-    *avaliable = (channel->read < channel->write) ? channel->packet_buffer + BUF_SZ - channel->write : channel->read - channel->write;
-    return channel->write;
+void *_getBufferAddress(struct channel *channel, int *avaliable)
+{
+  *avaliable = (channel->read < channel->write)
+                   ? BUF_SZ - channel->write
+                   : channel->read - channel->write;
+  return channel->packet_buffer + channel->write;
 }

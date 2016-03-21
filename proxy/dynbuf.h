@@ -34,8 +34,8 @@
 #include <stdlib.h>
 
 typedef struct dynbuf {
-    unsigned char *buf;
-    size_t sz;
+  unsigned char *buf;
+  size_t sz;
 } dynbuf_t;
 
 dynbuf_t *dynbuf_new(unsigned char *, size_t) MALLOC;

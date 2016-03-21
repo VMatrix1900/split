@@ -35,11 +35,11 @@
 #include <pthread.h>
 
 typedef struct cert {
-    EVP_PKEY *key;
-    X509 *crt;
-    STACK_OF(X509) * chain;
-    pthread_mutex_t mutex;
-    size_t references;
+  EVP_PKEY *key;
+  X509 *crt;
+  STACK_OF(X509) * chain;
+  pthread_mutex_t mutex;
+  size_t references;
 } cert_t;
 
 cert_t *cert_new(void) MALLOC;

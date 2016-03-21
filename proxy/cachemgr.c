@@ -51,8 +51,8 @@ cache_t *cachemgr_dsess;
  */
 static void *cachemgr_gc_thread(UNUSED void *arg)
 {
-    cache_gc(arg);
-    return NULL;
+  cache_gc(arg);
+  return NULL;
 }
 
 /*
@@ -62,20 +62,20 @@ static void *cachemgr_gc_thread(UNUSED void *arg)
  */
 int cachemgr_preinit(void)
 {
-    if (!(cachemgr_fkcrt = cache_new(cachefkcrt_init_cb))) goto out4;
-    if (!(cachemgr_tgcrt = cache_new(cachetgcrt_init_cb))) goto out3;
-    if (!(cachemgr_ssess = cache_new(cachessess_init_cb))) goto out2;
-    if (!(cachemgr_dsess = cache_new(cachedsess_init_cb))) goto out1;
-    return 0;
+  if (!(cachemgr_fkcrt = cache_new(cachefkcrt_init_cb))) goto out4;
+  if (!(cachemgr_tgcrt = cache_new(cachetgcrt_init_cb))) goto out3;
+  if (!(cachemgr_ssess = cache_new(cachessess_init_cb))) goto out2;
+  if (!(cachemgr_dsess = cache_new(cachedsess_init_cb))) goto out1;
+  return 0;
 
 out1:
-    cache_free(cachemgr_ssess);
+  cache_free(cachemgr_ssess);
 out2:
-    cache_free(cachemgr_tgcrt);
+  cache_free(cachemgr_tgcrt);
 out3:
-    cache_free(cachemgr_fkcrt);
+  cache_free(cachemgr_fkcrt);
 out4:
-    return -1;
+  return -1;
 }
 
 /*
@@ -84,11 +84,11 @@ out4:
  */
 int cachemgr_init(void)
 {
-    cache_reinit(cachemgr_fkcrt);
-    cache_reinit(cachemgr_tgcrt);
-    cache_reinit(cachemgr_ssess);
-    cache_reinit(cachemgr_dsess);
-    return 0;
+  cache_reinit(cachemgr_fkcrt);
+  cache_reinit(cachemgr_tgcrt);
+  cache_reinit(cachemgr_ssess);
+  cache_reinit(cachemgr_dsess);
+  return 0;
 }
 
 /*
@@ -98,10 +98,10 @@ int cachemgr_init(void)
  */
 void cachemgr_fini(void)
 {
-    cache_free(cachemgr_dsess);
-    cache_free(cachemgr_ssess);
-    cache_free(cachemgr_tgcrt);
-    cache_free(cachemgr_fkcrt);
+  cache_free(cachemgr_dsess);
+  cache_free(cachemgr_ssess);
+  cache_free(cachemgr_tgcrt);
+  cache_free(cachemgr_fkcrt);
 }
 
 /*
@@ -112,39 +112,36 @@ void cachemgr_fini(void)
  */
 void cachemgr_gc(void)
 {
-    pthread_t fkcrt_thr, dsess_thr, ssess_thr;
-    int rv;
+  pthread_t fkcrt_thr, dsess_thr, ssess_thr;
+  int rv;
 
-    /* the tgcrt cache does not need cleanup */
+  /* the tgcrt cache does not need cleanup */
 
-    rv = pthread_create(&fkcrt_thr, NULL, cachemgr_gc_thread, cachemgr_fkcrt);
-    if (rv) {
-        log_err_printf("cachemgr_gc: pthread_create failed: %s\n",
-                       strerror(rv));
-    }
-    rv = pthread_create(&ssess_thr, NULL, cachemgr_gc_thread, cachemgr_ssess);
-    if (rv) {
-        log_err_printf("cachemgr_gc: pthread_create failed: %s\n",
-                       strerror(rv));
-    }
-    rv = pthread_create(&dsess_thr, NULL, cachemgr_gc_thread, cachemgr_dsess);
-    if (rv) {
-        log_err_printf("cachemgr_gc: pthread_create failed: %s\n",
-                       strerror(rv));
-    }
+  rv = pthread_create(&fkcrt_thr, NULL, cachemgr_gc_thread, cachemgr_fkcrt);
+  if (rv) {
+    log_err_printf("cachemgr_gc: pthread_create failed: %s\n", strerror(rv));
+  }
+  rv = pthread_create(&ssess_thr, NULL, cachemgr_gc_thread, cachemgr_ssess);
+  if (rv) {
+    log_err_printf("cachemgr_gc: pthread_create failed: %s\n", strerror(rv));
+  }
+  rv = pthread_create(&dsess_thr, NULL, cachemgr_gc_thread, cachemgr_dsess);
+  if (rv) {
+    log_err_printf("cachemgr_gc: pthread_create failed: %s\n", strerror(rv));
+  }
 
-    rv = pthread_join(fkcrt_thr, NULL);
-    if (rv) {
-        log_err_printf("cachemgr_gc: pthread_join failed: %s\n", strerror(rv));
-    }
-    rv = pthread_join(ssess_thr, NULL);
-    if (rv) {
-        log_err_printf("cachemgr_gc: pthread_join failed: %s\n", strerror(rv));
-    }
-    rv = pthread_join(dsess_thr, NULL);
-    if (rv) {
-        log_err_printf("cachemgr_gc: pthread_join failed: %s\n", strerror(rv));
-    }
+  rv = pthread_join(fkcrt_thr, NULL);
+  if (rv) {
+    log_err_printf("cachemgr_gc: pthread_join failed: %s\n", strerror(rv));
+  }
+  rv = pthread_join(ssess_thr, NULL);
+  if (rv) {
+    log_err_printf("cachemgr_gc: pthread_join failed: %s\n", strerror(rv));
+  }
+  rv = pthread_join(dsess_thr, NULL);
+  if (rv) {
+    log_err_printf("cachemgr_gc: pthread_join failed: %s\n", strerror(rv));
+  }
 }
 
 /* vim: set noet ft=c: */
