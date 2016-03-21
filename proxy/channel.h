@@ -8,6 +8,7 @@
 
 #define CIRCULAR_SZ 50
 #define BUF_SZ 2 << 14
+#define PACKET_MAX_SZ 2 << 14
 
 key_t key_up = 1000;
 key_t key_down = 1001;
@@ -48,5 +49,5 @@ struct packet_info PullFromTCP();
 int PushPacketInfo(struct packet_info pi, struct channel *channel);
 int PushToSSL(struct packet_info pi, void *write_pointer);
 int PushToTCP(struct packet_info pi, void *write_pointer);
-void ** GetBufferAddress(int *avliable);
+char * GetBufferAddress(int *avaliable);
 

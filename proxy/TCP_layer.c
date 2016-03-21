@@ -58,7 +58,8 @@ void copydata(evutil_socket_t fd, short what, void *ptr)
     struct pxy_conn *conn;
     event_del(ctx->timer);
     struct packet_info pi;
-    pi = PullFromSSL();
+    void **read_pointer;
+    pi = PullFromSSL(read_pointer);
     if (pi.valid) {
         conn = ctx->conns[pi.id];
         // send to client side or server side.
@@ -73,41 +74,39 @@ void copydata(evutil_socket_t fd, short what, void *ptr)
             exit(1);
         }
         /*printf("packet size:%zu\n", length);*/
-        char **packet_buffer = (char **)sharedmem_pull_addr(pi.address);
-        bufferevent_write(bev, *packet_buffer, pi.size);
+        bufferevent_write(bev, temp_buffer, pi.length);
     }
     event_add(ctx->timer, &msec);
 }
 
-void readcb(struct bufferevent *bev, void *ptr, int server)
+void readcb(struct bufferevent *bev, void *ptr, enum packet_type server)
 {
     struct pxy_conn *ctx = (struct pxy_conn *)ptr;
 
     struct packet_info pi;
     pi.id = ctx->index;
-    pi.server = server;
+    pi.side = server;
     pi.valid = true;
     int avali_size = 0;
-    char **write_pointer = NULL;
-    write_pointer = (char **)sharedmem_get_addr(&avali_size);
-    pi.size = bufferevent_read(bev, *write_pointer, avali_size);
-    while (PushToSSL(pi, (void *)(*write_pointer)) < 0) {
+    char *write_pointer = NULL;
+    write_pointer = GetToSSLBufferAddr(&avali_size);
+    pi.length = bufferevent_read(bev, write_pointer, avali_size);
+    while (PushToSSL(pi, write_pointer) < 0) {
         ;
     }
     /*printf("read %zu data from network\n", read);*/
-    (*write_pointer) += pi.size;
 }
 
 void cli_readcb(struct bufferevent *bev, void *ptr)
 {
     /*printf("client:");*/
-    readcb(bev, ptr, 0);
+    readcb(bev, ptr, client);
 }
 
 void serv_readcb(struct bufferevent *bev, void *ptr)
 {
     /*printf("server:");*/
-    readcb(bev, ptr, 1);
+    readcb(bev, ptr, server);
 }
 
 void writecb(struct bufferevent *bev, void *ptr)

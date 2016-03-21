@@ -52,7 +52,8 @@ int destroy_shm()
     return 0;
 }
 
-struct packet_info PullPacketInfo(struct channel *channel) {
+struct packet_info PullPacketInfo(struct channel *channel)
+{
     struct packet_info pi = channel->circular[channel->read_head];
     if (pi.valid) {
         channel->circular[channel->read_head].valid = false;
@@ -61,26 +62,46 @@ struct packet_info PullPacketInfo(struct channel *channel) {
     return pi;
 }
 
-struct packet_info PullFromSSL() {
+struct packet_info PullFromSSL(char *temp)
+{
     return PullPacketInfo(shm_ctx->down_channel);
 }
 
-struct packet_info PullFromTCP() {
-    return PullPacketInfo(shm_ctx->up_channel);
+struct packet_info PullFromTCP() { return PullPacketInfo(shm_ctx->up_channel); }
+
+int PushPacketInfo(struct packet_info pi, struct channel *channel)
+{
+    if (channel->circular[channel->write_head].valid) {// circular buffer is full
+        return -1;
+    } else {
+        channel->circular[channel->write_head] = pi;
+        channel->write_head = (channel->write_head + 1) % CIRCULAR_SZ;
+        channel->write = (channel->wirte + pi.size) % CIRCULAR_SZ;
+        return 0;
+    }
 }
 
-int PushPacketInfo(struct packet_info pi, struct channel *channel) {
-    channel->circular[channel->write_head] = pi;
-    channel->write_head = (channel->write_head + 1) % CIRCULAR_SZ;
-    return 0;
-}
-
-int PushToSSL(struct packet_info pi,void* write_pointer) {
+int PushToSSL(struct packet_info pi, void *write_pointer)
+{
     pi.addr = virt_to_phys(write_pointer);
-    return PushPacketInfo(pi,shm_ctx->up_channel);
+    return PushPacketInfo(pi, shm_ctx->up_channel);
 }
 
-int PushToTCP(struct packet_info pi,void* write_pointer) {
+int PushToTCP(struct packet_info pi, void *write_pointer)
+{
     pi.addr = virt_to_phys(write_pointer);
-    return PushPacketInfo(pi,shm_ctx->down_channel);
+    return PushPacketInfo(pi, shm_ctx->down_channel);
+}
+
+char * GetToSSLBufferAddr(int * avaliable) {
+    return GetBufferAddress(shm_ctx->up_channel, int *avaliable);
+}
+
+char * GetToTCPBufferAddr(int * avaliable) {
+    return GetBufferAddress(shm_ctx->down_channel, int *avaliable);
+}
+
+char * GetBufferAddress(struct channel *channel, int* avaliable) {
+    *avaliable = (channel->read < channel->write) ? channel->packet_buffer + BUF_SZ - channel->write : channel->read - channel->write;
+    return channel->write;
 }
