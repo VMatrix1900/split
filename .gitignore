@@ -1,4 +1,5 @@
 bin/
 build/
 tags
+TAGS
 *.out
