@@ -50,50 +50,51 @@ void copydata(evutil_socket_t fd, short what, void *ptr)
     conn = ctx->conns[pi.id];
     // send to client side or server side.
     if (pi.side == server) {
-      /*printf("server send down:");*/
+      printf("server send down:");
       bev = conn->serv_bev;
     } else if (pi.side == client) {
-      /*printf("client send down:");*/
+      printf("client send down:");
       bev = conn->cli_bev;
     } else {
       printf("Wrong server indicator:%d\n", server);
       exit(1);
     }
-    /*printf("packet size:%zu\n", length);*/
+    printf("packet size:%d\n", pi.length);
     void *read_pointer = GetToTCPReadPointer();
     bufferevent_write(bev, read_pointer, pi.length);
-    UpdateToSSLReadPointer(pi.length);
+    UpdateToTCPReadPointer(pi.length);
   }
   event_add(ctx->timer, &msec);
 }
 
-void readcb(struct bufferevent *bev, void *ptr, enum packet_type server)
+void readcb(struct bufferevent *bev, void *ptr, enum packet_type side)
 {
   struct pxy_conn *ctx = (struct pxy_conn *)ptr;
 
   struct packet_info pi;
   pi.id = ctx->index;
-  pi.side = server;
+  pi.side = side;
   pi.valid = true;
   int avali_size = 0;
-  void *write_pointer = NULL;
-  write_pointer = GetToSSLBufferAddr(&avali_size);
+  void *write_pointer = GetToSSLBufferAddr(&avali_size);
   pi.length = bufferevent_read(bev, write_pointer, avali_size);
-  while (PushToSSL(pi, write_pointer) < 0) {
-    ;
+  if (pi.length > 0) {
+    while (PushToSSL(pi, write_pointer) < 0) {
+      ;
+    }
+    printf("read %d data from network\n", pi.length);
   }
-  /*printf("read %zu data from network\n", read);*/
 }
 
 void cli_readcb(struct bufferevent *bev, void *ptr)
 {
-  /*printf("client:");*/
+  printf("client:");
   readcb(bev, ptr, client);
 }
 
 void serv_readcb(struct bufferevent *bev, void *ptr)
 {
-  /*printf("server:");*/
+  printf("server:");
   readcb(bev, ptr, server);
 }
 

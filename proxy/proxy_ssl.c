@@ -1,5 +1,6 @@
-#include "proxy_ssl.h"
+#include <assert.h>
 #include <openssl/ssl.h>
+#include "proxy_ssl.h"
 #include "cachemgr.h"
 #include "cert.h"
 #include "log.h"
@@ -333,15 +334,20 @@ void send_down(struct proxy *proxy, enum packet_type side)
 {
   SSL *ssl = (side == client) ? proxy->cli_ssl : proxy->serv_ssl;
   BIO *out_bio = SSL_get_wbio(ssl);
-  size_t read = 0;
   int avaliable = 0;
   if (BIO_ctrl_pending(out_bio) > 0) {
     struct packet_info pi;
     void *write_pointer = GetToTCPBufferAddr(&avaliable);
     pi.side = side;
+    pi.id = proxy->index;
+    pi.valid = true;
     pi.length = BIO_read(out_bio, write_pointer, avaliable);
-    printf("%s down: %zu\n", (side == server) ? "client" : "server", read);
-    while (PushToTCP(pi, write_pointer) < 0) {
+    if (pi.length > 0) {
+      while (PushToTCP(pi, write_pointer) < 0) {
+        ;
+      }
+      printf("%s down: %d\n", (side == client) ? "client" : "server",
+             pi.length);
     }
   }
 }
@@ -351,25 +357,27 @@ void receive_up(struct proxy *proxy, struct packet_info *pi)
 {
   SSL *ssl = (pi->side == client) ? proxy->cli_ssl : proxy->serv_ssl;
   BIO *in_bio = SSL_get_rbio(ssl);
-  /*printf("begin receive up msg. The size is %zu\n", *((size_t
-   * *)shm_ctx->shm));*/
+  assert(pi->length > 0);
+  printf("begin receive up msg. The size is %d\n", pi->length);
   void *read_pointer = GetToSSLReadPointer();
   // copy the packet to in_bio
   int written = BIO_write(in_bio, read_pointer, pi->length);
+  assert(written == pi->length);
+  UpdateToSSLReadPointer(pi->length);
   printf("up : %d\n", written);
 }
 
 void forward_record(SSL *from, SSL *to, struct proxy *proxy)
 {
-  char buf[BUF_SZ] = {'0'};
+  char buf[PACKET_MAX_SZ] = {'0'};
   char *write_head = buf;
   int size = 0;
   int length = 0;
 
-  while ((length = SSL_read(from, write_head, (BUF_SZ)-size)) > 0) {
+  while ((length = SSL_read(from, write_head, (PACKET_MAX_SZ)-size)) > 0) {
     write_head += length;
     size += length;
-    if (size == BUF_SZ) {
+    if (size == PACKET_MAX_SZ) {
       printf("BUFfer is full!\n");
       break;
     }
@@ -377,39 +385,39 @@ void forward_record(SSL *from, SSL *to, struct proxy *proxy)
   /*buf[size] = '\0';*/
   /*printf("%s buf received\n", buf);*/
   switch (SSL_get_error(from, length)) {
-  case SSL_ERROR_WANT_WRITE:
-    // TODO rehandshake !!
-    printf("rehandshake happens");
-    break;
-  case SSL_ERROR_WANT_READ:
-    break;
-  case SSL_ERROR_ZERO_RETURN:
-    printf("ssl clean closed\n");
-    proxy_shutdown_free(proxy);
-  case SSL_ERROR_WANT_CONNECT:
-    printf("want connect!\n");
-    break;
-  case SSL_ERROR_WANT_ACCEPT:
-    printf("want accept");
-    break;
-  case SSL_ERROR_WANT_X509_LOOKUP:
-    printf("want x509 lookup!");
-    break;
-  case SSL_ERROR_SSL:
-    printf("%s: SSL library error!fatal need to shutdown\n",
-           (from == proxy->cli_ssl) ? "client" : "server");
-    ERR_print_errors_fp(stderr);
-    proxy_shutdown_free(proxy);
-    break;
-  case SSL_ERROR_SYSCALL:
-    printf("syscall error");
-    ERR_print_errors_fp(stderr);
-    break;
-  case SSL_ERROR_NONE:
-    break;
-  default :
-    perror("Forward error!");
-    exit(1);
+    case SSL_ERROR_WANT_WRITE:
+      // TODO rehandshake !!
+      printf("rehandshake happens");
+      break;
+    case SSL_ERROR_WANT_READ:
+      break;
+    case SSL_ERROR_ZERO_RETURN:
+      printf("ssl clean closed\n");
+      proxy_shutdown_free(proxy);
+    case SSL_ERROR_WANT_CONNECT:
+      printf("want connect!\n");
+      break;
+    case SSL_ERROR_WANT_ACCEPT:
+      printf("want accept");
+      break;
+    case SSL_ERROR_WANT_X509_LOOKUP:
+      printf("want x509 lookup!");
+      break;
+    case SSL_ERROR_SSL:
+      printf("%s: SSL library error!fatal need to shutdown\n",
+             (from == proxy->cli_ssl) ? "client" : "server");
+      ERR_print_errors_fp(stderr);
+      proxy_shutdown_free(proxy);
+      break;
+    case SSL_ERROR_SYSCALL:
+      printf("syscall error");
+      ERR_print_errors_fp(stderr);
+      break;
+    case SSL_ERROR_NONE:
+      break;
+    default:
+      perror("Forward error!");
+      exit(1);
   }
   if (!size) {
     return;
@@ -417,20 +425,20 @@ void forward_record(SSL *from, SSL *to, struct proxy *proxy)
   int r = SSL_write(to, buf, size);
   if (r <= 0) {
     switch (SSL_get_error(to, r)) {
-    case SSL_ERROR_WANT_READ:
-      // TODO handle rehandshake;
-      printf("write fail: want read");
-      break;
-    case SSL_ERROR_ZERO_RETURN:
-      printf("write fail:ssl closed");
-      proxy_shutdown_free(proxy);
-      return;
-    case SSL_ERROR_WANT_WRITE:
-      // TODO will this happen? we have unlimited bio memory buffer
-      perror("BIO memory buffer full");
-      exit(1);
-    default:
-      exit(1);
+      case SSL_ERROR_WANT_READ:
+        // TODO handle rehandshake;
+        printf("write fail: want read");
+        break;
+      case SSL_ERROR_ZERO_RETURN:
+        printf("write fail:ssl closed");
+        proxy_shutdown_free(proxy);
+        return;
+      case SSL_ERROR_WANT_WRITE:
+        // TODO will this happen? we have unlimited bio memory buffer
+        perror("BIO memory buffer full");
+        exit(1);
+      default:
+        exit(1);
     }
   } else {
     // we need to send down the msg;
@@ -456,8 +464,11 @@ void peek_hello_msg(struct proxy *proxy, struct packet_info *pi)
     // client hello msg is incomplete. set the flag, wait for another
     // msg.
   } else {
-    // sni parse is finished. now the server ssl is not ready. so we can
-    // only initiate client hanshake.
+// sni parse is finished. now the server ssl is not ready. so we can
+// only initiate client hanshake.
+#ifdef DEBUG
+    printf("sni is parsed for proxy %d", proxy->index);
+#endif
     proxy->SNI_parsed = true;
     if (proxy->sni) {
       SSL_set_tlsext_host_name(proxy->cli_ssl, proxy->sni);

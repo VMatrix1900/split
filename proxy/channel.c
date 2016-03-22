@@ -27,7 +27,6 @@ int init_shm()
     perror("up_channel fail.");
     return -1;
   }
-  memset(shm_ctx->up_channel, 0, shm_sz);
 
   shm_ctx->shmid_down = shmget(key_down, shm_sz, IPC_CREAT | 0666);
   if (shm_ctx->shmid_down < 0) {
@@ -39,7 +38,6 @@ int init_shm()
     perror("down_channel fail.");
     return -1;
   }
-  memset(shm_ctx->down_channel, 0, shm_sz);
   return 0;
 }
 
@@ -75,6 +73,7 @@ struct packet_info PullFromTCP()
 {
   return _pullPacketInfo(shm_ctx->up_channel);
 }
+
 void *_getReadPointer(struct channel *channel)
 {
   return channel->packet_buffer + channel->read;
@@ -112,13 +111,13 @@ int _pushPacketInfo(struct packet_info pi, struct channel *channel)
 
 int PushToSSL(struct packet_info pi, void *write_pointer)
 {
-  pi.addr_offset = write_pointer - (void *)shm_ctx->up_channel->packet_buffer;
+  pi.addr_offset = (char *)write_pointer - shm_ctx->up_channel->packet_buffer;
   return _pushPacketInfo(pi, shm_ctx->up_channel);
 }
 
 int PushToTCP(struct packet_info pi, void *write_pointer)
 {
-  pi.addr_offset = write_pointer - (void *)shm_ctx->down_channel->packet_buffer;
+  pi.addr_offset = (char *)write_pointer - shm_ctx->down_channel->packet_buffer;
   return _pushPacketInfo(pi, shm_ctx->down_channel);
 }
 
@@ -134,8 +133,8 @@ void *GetToTCPBufferAddr(int *avaliable)
 
 void *_getBufferAddress(struct channel *channel, int *avaliable)
 {
-  *avaliable = (channel->read < channel->write)
+  *avaliable = (channel->read <= channel->write)
                    ? BUF_SZ - channel->write
-                   : channel->read - channel->write;
+                   : channel->read - channel->write - 1;
   return channel->packet_buffer + channel->write;
 }

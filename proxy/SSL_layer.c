@@ -71,14 +71,14 @@ int main()
           send_down(proxy, server);
           if (r < 0) {
             switch (SSL_get_error(proxy->serv_ssl, r)) {
-            case SSL_ERROR_WANT_WRITE:
-              break;
-            case SSL_ERROR_WANT_READ:
-              // need more data, do nothing;
-              break;
-            default:
-              printf("Server handshake error!");
-              ERR_print_errors_fp(stderr);
+              case SSL_ERROR_WANT_WRITE:
+                break;
+              case SSL_ERROR_WANT_READ:
+                // need more data, do nothing;
+                break;
+              default:
+                printf("Server handshake error!");
+                ERR_print_errors_fp(stderr);
             }
           } else {
             // handshake is done
@@ -102,14 +102,14 @@ int main()
           if (r < 0) {
             send_down(proxy, client);
             switch (SSL_get_error(proxy->cli_ssl, r)) {
-            case SSL_ERROR_WANT_WRITE:
-              break;
-            case SSL_ERROR_WANT_READ:
-              // need more data, do nothing;
-              break;
-            default:
-              printf("Client handshake error!\n");
-              ERR_print_errors_fp(stderr);
+              case SSL_ERROR_WANT_WRITE:
+                break;
+              case SSL_ERROR_WANT_READ:
+                // need more data, do nothing;
+                break;
+              default:
+                printf("Client handshake error!\n");
+                ERR_print_errors_fp(stderr);
             }
           } else {
             printf("client handshake is done\n");
