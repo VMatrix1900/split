@@ -4,9 +4,6 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/stat.h>
-// name and the size of the shared memory segment.
-key_t key_up = 1000;
-key_t key_down = 1001;
 
 #define CIRCULAR_SZ 50
 #define BUF_SZ (2 << 20)
@@ -37,8 +34,6 @@ struct shm_ctx_t {
   struct channel *up_channel;
   struct channel *down_channel;
 };
-
-struct shm_ctx_t *shm_ctx = NULL;
 
 int init_shm();
 int destroy_shm();

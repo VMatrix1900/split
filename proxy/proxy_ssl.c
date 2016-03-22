@@ -8,7 +8,6 @@
 struct proxy_ctx *create_channel_ctx()
 {
   struct proxy_ctx *channel = malloc(sizeof(struct proxy_ctx));
-  init_shm();
   memset(channel->proxies, 0, MAXCONNS * sizeof(struct proxy *));
   channel->cacrt = ssl_x509_load("ca.crt");
   if (!channel->cacrt) {
@@ -123,10 +122,8 @@ struct proxy *proxy_new(struct proxy_ctx *ctx, int index)
   proxy->client_handshake_done = false;
   proxy->server_handshake_done = false;
   proxy->hello_msg_length = 0;
-  proxy->msgs_need_to_out = 0;
   proxy->client_received = 0;
   proxy->server_send = 0;
-  proxy->down_pointer = ctx->shm_ctx->down_channel + sizeof(int);
   proxy->cli_ssl = pxy_dstssl_setup();
   if (!proxy->cli_ssl) {
     return NULL;
@@ -342,7 +339,7 @@ void send_down(struct proxy *proxy, enum packet_type side)
     struct packet_info pi;
     void *write_pointer = GetToTCPBufferAddr(&avaliable);
     pi.side = side;
-    pi.length = BIO_read(out_bio, proxy->down_pointer, avaliable);
+    pi.length = BIO_read(out_bio, write_pointer, avaliable);
     printf("%s down: %zu\n", (side == server) ? "client" : "server", read);
     while (PushToTCP(pi, write_pointer) < 0) {
     }
@@ -410,8 +407,8 @@ void forward_record(SSL *from, SSL *to, struct proxy *proxy)
     break;
   case SSL_ERROR_NONE:
     break;
-  default perror
-    ("Forward error!");
+  default :
+    perror("Forward error!");
     exit(1);
   }
   if (!size) {
@@ -468,5 +465,4 @@ void peek_hello_msg(struct proxy *proxy, struct packet_info *pi)
     SSL_do_handshake(proxy->cli_ssl);
     send_down(proxy, client);
   }
-  return msg;
 }

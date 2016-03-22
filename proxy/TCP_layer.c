@@ -8,7 +8,6 @@
 #include <semaphore.h>
 #include <stdio.h>
 #include <sys/ipc.h>
-#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/types.h>
@@ -17,18 +16,6 @@
 #include "proxy_tcp.h"
 
 struct timeval msec = {0, 1};
-
-struct proxy_ctx *proxy_ctx_new()
-{
-  struct proxy_ctx *proxy = malloc(sizeof(struct proxy_ctx));
-  init_shm();
-
-  printf("initiated shared memory\n");
-  proxy->base = event_base_new();
-  proxy->counts = 0;
-  memset(proxy->conns, 0, MAXCONNS * sizeof(struct pxy_conns *));
-  return proxy;
-}
 
 int nat_netfilter_lookup(struct sockaddr *dst_addr, socklen_t *dst_addrlen,
                          evutil_socket_t s, struct sockaddr *src_addr,
@@ -92,7 +79,7 @@ void readcb(struct bufferevent *bev, void *ptr, enum packet_type server)
   void *write_pointer = NULL;
   write_pointer = GetToSSLBufferAddr(&avali_size);
   pi.length = bufferevent_read(bev, write_pointer, avali_size);
-  while (PushToSSL(pi) < 0) {
+  while (PushToSSL(pi, write_pointer) < 0) {
     ;
   }
   /*printf("read %zu data from network\n", read);*/
@@ -179,6 +166,9 @@ int main(void)
   struct evconnlistener *listener;
   struct sockaddr_in sin;
 
+  init_shm();
+
+  printf("initiated shared memory\n");
   struct proxy_ctx *proxy = proxy_ctx_new();
   proxy->timer = evtimer_new(proxy->base, copydata, proxy);
   memset(&sin, 0, sizeof(sin));

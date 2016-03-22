@@ -16,6 +16,7 @@
 
 int main()
 {
+  init_shm();
   if (ssl_init() < 0) {
     printf("OpenSSL library init wrong!\n");
     exit(-1);
@@ -40,7 +41,8 @@ int main()
   struct proxy *proxy;
   struct packet_info pi;
 
-  while (pi = PullFromTCP()) {
+  while (true) {
+    pi = PullFromTCP();
     if (pi.valid) {
       int index = pi.id;
       if (channel->proxies[index]) {

@@ -6,6 +6,11 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/stat.h>
+// name and the size of the shared memory segment.
+key_t key_up = 1000;
+key_t key_down = 1001;
+
+struct shm_ctx_t *shm_ctx = NULL;
 
 int init_shm()
 {
@@ -51,7 +56,7 @@ int destroy_shm()
   return 0;
 }
 
-struct packet_info _pullPackeInfo(struct channel *channel)
+struct packet_info _pullPacketInfo(struct channel *channel)
 {
   struct packet_info pi = channel->circular[channel->read_head];
   if (pi.valid) {

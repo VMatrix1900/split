@@ -5,7 +5,7 @@ SSL_LIB := -I/home/vincent/Downloads/openssl-1.0.1i/include -L/home/vincent/Down
 CFLAGS := -g -Wall -Wextra -std=c99 -pthread -fstack-protector-all -pedantic -D_GNU_SOURCE -DDEBUG_SESSION_CACHE
 SRCS := $(filter-out genode_library_c.c, $(wildcard *.c))
 OBJS := $(SRCS:.c=.o)
-TCP_OBJ := TCP_layer.o proxy_tcp.o
+TCP_OBJ := channel.o TCP_layer.o proxy_tcp.o
 
 SSL_OBJS := $(filter-out $(TCP_OBJ), $(OBJS))
 BUILD_OBJS := $(addprefix $(BUILDDIR)/, $(SSL_OBJS))
@@ -33,6 +33,6 @@ run_ssl: ssl
 	$(BINDIR)/ssl
 
 clean:
-	rm ../bin/ssl
-	rm ../bin/tcp
-	rm ../build/*
+	rm -f ../build/*
+	rm -f ../bin/ssl
+	rm -f ../bin/tcp

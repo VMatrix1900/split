@@ -35,7 +35,7 @@ void proxy_shutdown_free(struct proxy *);
 void notify_tcp();
 
 void send_down(struct proxy *, enum packet_type);
-void receive_up(struct proxy *, struct packet_info);
+void receive_up(struct proxy *, struct packet_info*);
 void forward_record(SSL *, SSL *, struct proxy *);
 
 int pxy_ossl_sessnew_cb(SSL *, SSL_SESSION *);

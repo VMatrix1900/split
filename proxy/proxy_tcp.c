@@ -48,4 +48,13 @@ void pxy_conn_free(struct pxy_conn *ctx)
   free(ctx);
 }
 
+struct proxy_ctx *proxy_ctx_new()
+{
+  struct proxy_ctx *proxy = malloc(sizeof(struct proxy_ctx));
+  proxy->base = event_base_new();
+  proxy->counts = 0;
+  memset(proxy->conns, 0, MAXCONNS * sizeof(struct pxy_conns *));
+  return proxy;
+}
+
 void proxy_ctx_free(struct proxy_ctx *ctx) {}
