@@ -123,8 +123,8 @@ struct proxy *proxy_new(struct proxy_ctx *ctx, int index)
   proxy->client_handshake_done = false;
   proxy->server_handshake_done = false;
   proxy->hello_msg_length = 0;
-  proxy->client_received = 0;
-  proxy->server_send = 0;
+  proxy->cli_parser = malloc(sizeof(http_parser));
+  proxy->serv_parser = malloc(sizeof(http_parser));
   proxy->cli_ssl = pxy_dstssl_setup();
   if (!proxy->cli_ssl) {
     return NULL;
@@ -418,6 +418,12 @@ void forward_record(SSL *from, SSL *to, struct proxy *proxy)
     default:
       perror("Forward error!");
       exit(1);
+  }
+  if (from == proxy->cli_ssl) {
+    ParseRequest(buf, size, result, result_length);
+  } else {
+    ParseResponse(buf,
+                  )
   }
   if (!size) {
     return;

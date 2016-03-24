@@ -1,6 +1,7 @@
 #include <openssl/ssl.h>
 #include <stdbool.h>
 #include "channel.h"
+#include "http_parser.h"
 
 #define MAXCONNS 65536
 struct proxy_ctx {
@@ -13,14 +14,14 @@ struct proxy_ctx {
 };
 
 struct proxy {
-  int client_received;
-  int server_send;
   struct proxy_ctx *ctx;
   X509 *origcrt;
   int index;
   char *sni;
   SSL *cli_ssl;
   SSL *serv_ssl;
+  http_parser *cli_parser;
+  http_parser *serv_parser;
   unsigned char client_hello_buf[1024];
   ssize_t hello_msg_length;
   bool SNI_parsed;
