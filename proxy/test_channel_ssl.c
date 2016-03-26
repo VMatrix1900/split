@@ -4,12 +4,8 @@
 #include <string.h>
 #include "channel.h"
 
-
 int main() {
-  char buffer[100];
-  for (int i = 0; i < 100; i++) {
-    buffer[i] = 'a';
-  }
+  char buffer[101];
   init_shm();
   srandom(time(NULL));
   struct packet_info pi;
@@ -29,8 +25,13 @@ int main() {
   }
   count = 0;
   while (count < 100) {
+    for (int i = 0; i < 100; i++) {
+      buffer[i] = 65 + random() % 26;
+    }
+    buffer[100] = '\0';
+    printf("The buffer content is %s\n", buffer);
     pi.id = count;
-    pi.length = random() % 100;
+    pi.length = 1 + random() % 99;
     pi.valid = true;
     int aval;
     void *write = GetToTCPBufferAddr(&aval);

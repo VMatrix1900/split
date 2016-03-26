@@ -6,6 +6,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/stat.h>
+#include <assert.h>
 // name and the size of the shared memory segment.
 key_t key_up = 1000;
 key_t key_down = 1001;
@@ -58,6 +59,8 @@ struct packet_info _pullPacketInfo(struct channel *channel)
 {
   struct packet_info pi = channel->circular[channel->read_head];
   if (pi.valid) {
+    printf("read head is %d\n", channel->read_head);
+    assert(pi.length > 0);
     channel->circular[channel->read_head].valid = false;
     channel->read_head = (channel->read_head + 1) % CIRCULAR_SZ;
   }
@@ -103,6 +106,9 @@ int _pushPacketInfo(struct packet_info pi, struct channel *channel)
     return -1;
   } else {
     channel->circular[channel->write_head] = pi;
+    printf((pi.side == client) ? "Client " : "Server ");
+    printf("write head is %d\n", channel->write_head);
+    assert(channel->circular[channel->write_head].length > 0);
     channel->write_head = (channel->write_head + 1) % CIRCULAR_SZ;
     channel->write = (channel->write + pi.length) % BUF_SZ;
     return 0;

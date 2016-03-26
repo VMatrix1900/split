@@ -346,7 +346,7 @@ void send_down(struct proxy *proxy, enum packet_type side)
       while (PushToTCP(pi, write_pointer) < 0) {
         ;
       }
-      printf("%s down: %d\n", (side == client) ? "client" : "server",
+      printf("%s down: %d\n", (side == client) ? "Client" : "Server",
              pi.length);
     }
   }
@@ -358,24 +358,24 @@ void receive_up(struct proxy *proxy, struct packet_info *pi)
   SSL *ssl = (pi->side == client) ? proxy->cli_ssl : proxy->serv_ssl;
   BIO *in_bio = SSL_get_rbio(ssl);
   assert(pi->length > 0);
+  printf((pi->side == client) ? "Client " : "Server ");
   printf("begin receive up msg. The size is %d\n", pi->length);
   void *read_pointer = GetToSSLReadPointer();
   // copy the packet to in_bio
   int written = BIO_write(in_bio, read_pointer, pi->length);
   assert(written == pi->length);
   UpdateToSSLReadPointer(pi->length);
-  printf("up : %d\n", written);
 }
 
 void forward_record(SSL *from, SSL *to, struct proxy *proxy)
 {
   char buf[PACKET_MAX_SZ] = {'0'};
-  char *write_head = buf;
+  char *write_pointer = buf;
   int size = 0;
   int length = 0;
 
-  while ((length = SSL_read(from, write_head, (PACKET_MAX_SZ)-size)) > 0) {
-    write_head += length;
+  while ((length = SSL_read(from, write_pointer, (PACKET_MAX_SZ)-size)) > 0) {
+    write_pointer += length;
     size += length;
     if (size == PACKET_MAX_SZ) {
       printf("BUFfer is full!\n");
@@ -467,7 +467,7 @@ void peek_hello_msg(struct proxy *proxy, struct packet_info *pi)
 // sni parse is finished. now the server ssl is not ready. so we can
 // only initiate client hanshake.
 #ifdef DEBUG
-    printf("sni is parsed for proxy %d", proxy->index);
+    printf("sni is parsed for proxy %d\n", proxy->index);
 #endif
     proxy->SNI_parsed = true;
     if (proxy->sni) {

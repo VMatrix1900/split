@@ -6,10 +6,7 @@
 
 
 int main() {
-  char buffer[100];
-  for (int i = 0; i < 100; i++) {
-    buffer[i] = 'a';
-  }
+  char buffer[101];
   init_shm();
   srandom(time(NULL));
   int count = 0;
@@ -18,6 +15,11 @@ int main() {
     pi.id = count;
     pi.length = random() % 100;
     if (pi.length > 0) {
+      for (int i = 0; i < 100; i++) {
+        buffer[i] = 65 + random() % 26;
+      }
+      buffer[100] = '\0';
+      printf("The buffer content is %s\n", buffer);
       pi.valid = true;
       int aval;
       void *write = GetToSSLBufferAddr(&aval);
