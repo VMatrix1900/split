@@ -1,9 +1,9 @@
 #include <openssl/ssl.h>
 #include <stdbool.h>
 #include "channel.h"
+#include "constants.h"
 #include "http_parser.h"
 
-#define MAXCONNS 65536
 struct proxy_ctx {
   int conns;
   X509 *cacrt;             // store the cacrt for all server ssl connection
@@ -36,7 +36,7 @@ void proxy_shutdown_free(struct proxy *);
 void notify_tcp();
 
 void send_down(struct proxy *, enum packet_type);
-void receive_up(struct proxy *, struct packet_info*);
+void receive_up(struct proxy *, struct packet_info *);
 void forward_record(SSL *, SSL *, struct proxy *);
 
 int pxy_ossl_sessnew_cb(SSL *, SSL_SESSION *);
