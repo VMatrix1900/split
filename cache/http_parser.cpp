@@ -1,17 +1,19 @@
 #include "http_parser.hpp"
 #include <cstdlib>
 #include <iostream>
+#include <string>
 #include <regex>
+#include <cstring>
 #include "cache.hpp"
-#define MAXCONNS 65536
 
 HTTPStreamParser parsers[MAXCONNS];
 cache::Resource resourcecache;
 
-void ParseHTTPRequest(int id, const char *buf, int size, const char *result,
+void ParseHTTPRequest(int id, const char *buf, int size, char *result,
                       int result_length, enum packet_type side)
 {
   http::BufferedRequest &request = parsers[id].request;
+  char * data = (char *) buf;
   while (size > 0) {
     // Parse as much data as possible.
     while ((size > 0) && !request.complete()) {
@@ -24,29 +26,29 @@ void ParseHTTPRequest(int id, const char *buf, int size, const char *result,
       std::cerr << "Request still needs data." << std::endl;
     } else {  // size > 0 add the logic of detect url
       if (request.method_name() == "GET") {
-        parser[id].url = request.header("HOST") + request.url();
-        std::string cached = resourcecache.GetResource(parser[id].url);
+        parsers[id].url = request.header("HOST") + request.url();
+        std::string cached = resourcecache.GetResource(parsers[id].url);
         if (cached != "") {
           result_length = cached.length();
-          result = malloc(result_length + 1);
+          result = (char *)malloc(result_length + 1);
           strcpy(result, cached.c_str());
           side = server;
         } else {
-          parser[id].interested = true;
+          parsers[id].interested = true;
           // rebuild the request, forward it
           http::RequestBuilder rebuild_request(request);
-          std::string requststring = rebuild_request.to_string();
+          std::string requeststring = rebuild_request.to_string();
           result_length = requeststring.length();
-          result = malloc(result_length + 1);
+          result = (char *)malloc(result_length + 1);
           strcpy(result, requeststring.c_str());
           side = client;
         }
       } else {
         // other request, just forward it.
         http::RequestBuilder rebuild_request(request);
-        std::string requststring = rebuild_request.to_string();
+        std::string requeststring = rebuild_request.to_string();
         result_length = requeststring.length();
-        result = malloc(result_length + 1);
+        result = (char *)malloc(result_length + 1);
         strcpy(result, requeststring.c_str());
         side = client;
       }
@@ -57,14 +59,14 @@ void ParseHTTPRequest(int id, const char *buf, int size, const char *result,
 }
 
 bool AllowCache(std::string policy) {
-  std::regex public("public");
-  return std::regex_match(policy, public);
+  return policy.find("public") != std::string::npos;
 }
 
-void ParseHTTPResponse(int id, const char *buf, int size, const char *result,
+void ParseHTTPResponse(int id, const char *buf, int size, char *result,
                        int result_length)
 {
   http::BufferedResponse &response = parsers[id].response;
+  char *data = (char *)buf;
   while (size > 0) {
     // Parse as much data as possible.
     while ((size > 0) && !response.complete()) {
@@ -80,12 +82,12 @@ void ParseHTTPResponse(int id, const char *buf, int size, const char *result,
       http::ResponseBuilder rebuild_response(response);
       std::string responsestring = rebuild_response.to_string();
       result_length = responsestring.length();
-      result = malloc(result_length + 1);
+      result = (char *)malloc(result_length + 1);
       strcpy(result, responsestring.c_str());
-      if (response.status() == 200 && parser[id].interested &&
+      if (response.status() == 200 && parsers[id].interested &&
           AllowCache(
               response.header("Cache-Control"))) {  // ok get the resource
-        resourcecache.AddResource(parser[id].url, responsestring, time);
+        resourcecache.AddResource(parsers[id].url, responsestring, time);
       }
       // Prepare to receive another response.
       response.clear();

@@ -27,7 +27,7 @@ class Resource
     }
     _expiration.insert(std::make_pair(key, expiration));
   }
-  std::string GetResogurce(std::string key)
+  std::string GetResource(std::string key)
   {
     if (is_valid(key)) {
       return _data.find(key)->second;
