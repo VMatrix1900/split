@@ -38,6 +38,10 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+  
 /*
  * ECDH is disabled when building against OpenSSL < 1.0.0e due to issues with
  * thread-safety and security in server mode ephemereal ECDH cipher suites.
@@ -113,6 +117,10 @@ int ssl_init(void) WUNRES;
 void ssl_reinit(void);
 void ssl_fini(void);
 
+EVP_PKEY *load_key();
+int init_ssl_bio(SSL *ssl) NONNULL(1);
+X509 *load_certificate();
+
 char *ssl_ssl_state_to_str(SSL *) NONNULL(1) MALLOC;
 
 #ifndef OPENSSL_NO_DH
@@ -126,7 +134,6 @@ void ssl_dh_refcount_inc(DH *) NONNULL(1);
 EC_KEY *ssl_ec_by_name(const char *) MALLOC;
 #endif /* !OPENSSL_NO_EC */
 
-EVP_PKEY *ssl_key_load(const char *) NONNULL(1) MALLOC;
 EVP_PKEY *ssl_key_genrsa(const int) MALLOC;
 void ssl_key_refcount_inc(EVP_PKEY *) NONNULL(1);
 
@@ -138,7 +145,6 @@ int ssl_x509_v3ext_copy_by_nid(X509 *, X509 *, int) NONNULL(1, 2);
 int ssl_x509_serial_copyrand(X509 *, X509 *) NONNULL(1, 2);
 X509 *ssl_x509_forge(X509 *, EVP_PKEY *, X509 *, const char *, EVP_PKEY *)
     NONNULL(1, 2, 3, 5) MALLOC;
-X509 *ssl_x509_load(const char *) NONNULL(1) MALLOC;
 char *ssl_x509_subject(X509 *) NONNULL(1) MALLOC;
 char *ssl_x509_subject_cn(X509 *, size_t *) NONNULL(1, 2) MALLOC;
 #define SSL_X509_FPRSZ 20
@@ -169,6 +175,9 @@ int ssl_dnsname_match(const char *, size_t, const char *, size_t)
     NONNULL(1, 3) WUNRES;
 char *ssl_wildcardify(const char *) NONNULL(1) MALLOC;
 
+#ifdef __cplusplus
+}
+#endif /* extern c */
 #endif /* !SSL_H */
 
 /* vim: set noet ft=c: */

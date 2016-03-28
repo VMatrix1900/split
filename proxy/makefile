@@ -2,14 +2,13 @@ BINDIR := ../bin
 BUILDDIR := ../build
 CC := gcc
 SSL_LIB := -I/home/vincent/Downloads/openssl-1.0.1i/include -L/home/vincent/Downloads/openssl-1.0.1i
-CFLAGS := -g -Wall -Wextra -std=c99 -pthread -fstack-protector-all -pedantic -D_GNU_SOURCE -DDEBUG_SESSION_CACHE -DDEBUG
+CFLAGS := -g -Wall -Wextra -std=c99 -pthread -fstack-protector-all -pedantic -D_GNU_SOURCE -DDEBUG
 SRCS := $(filter-out genode_library_c.c, $(wildcard *.c))
 SSL_SRCS := SSL_layer.c channel.c proxy_ssl.c ssl.c \
-			cache.c cachemgr.c cachedsess.c cachefkcrt.c cachetgcrt.c cachessess.c \
-			log.c dynbuf.c cert.c
+			cert.c
 OBJS := $(SRCS:.c=.o)
 TCP_OBJ := TCP_layer.o proxy_tcp.o
-SHARED_LIB_OBJ := channel.o
+SHARED_LIB_OBJ := $(BUILDDIR)/channel.o
 
 SSL_OBJS := $(addprefix $(BUILDDIR)/, $(SSL_SRCS:.c=.o))
 TCP_OBJS := $(addprefix $(BUILDDIR)/, $(TCP_OBJ))

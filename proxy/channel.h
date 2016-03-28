@@ -9,6 +9,10 @@
 #define BUF_SZ (2 << 20)
 #define PACKET_MAX_SZ (2 << 14)
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum packet_type { client, server };
 
 struct packet_info {
@@ -52,3 +56,7 @@ int PushToTCP(struct packet_info pi, void *write_pointer);
 void *_getBufferAddress(struct channel *channel, int *avaliable);
 void *GetToSSLBufferAddr(int *avaliable);
 void *GetToTCPBufferAddr(int *avaliable);
+
+#ifdef __cplusplus
+}
+#endif /* extern c */

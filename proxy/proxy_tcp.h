@@ -1,7 +1,11 @@
+#pragma once
 #include <stdlib.h>
 #include <sys/socket.h>
 #include "constants.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 struct pxy_conn {
   int closed;
   struct sockaddr_storage dstsock;
@@ -26,3 +30,7 @@ struct proxy_ctx *proxy_ctx_new();
 void proxy_ctx_free(struct proxy_ctx *);
 struct pxy_conn *pxy_conn_new(struct proxy_ctx *);
 void pxy_conn_free(struct pxy_conn *);
+
+#ifdef __cplusplus
+}
+#endif /* extern c */

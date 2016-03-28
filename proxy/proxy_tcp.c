@@ -2,6 +2,7 @@
 #include <event2/bufferevent.h>
 #include <event2/event.h>
 #include <stdio.h>
+#include <string.h>
 
 int find_next_slot(struct proxy_ctx *ctx)
 {

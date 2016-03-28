@@ -9,7 +9,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include "cachemgr.h"
 #include "cert.h"
 #include "proxy_ssl.h"
 #include "ssl.h"
@@ -23,14 +22,14 @@ int main()
   }
   ERR_load_BIO_strings();
 
-  if (cachemgr_preinit() < 0) {
-    printf("cachemgr preinit wrong! exit!\n");
-    exit(-1);
-  }
-  if (cachemgr_init() < 0) {
-    printf("cachemgr init wrong! exit!\n");
-    exit(-1);
-  }
+  /* if (cachemgr_preinit() < 0) { */
+  /*   printf("cachemgr preinit wrong! exit!\n"); */
+  /*   exit(-1); */
+  /* } */
+  /* if (cachemgr_init() < 0) { */
+  /*   printf("cachemgr init wrong! exit!\n"); */
+  /*   exit(-1); */
+  /* } */
 
   struct proxy_ctx *channel = create_channel_ctx();
   if (!channel) {
@@ -116,7 +115,7 @@ int main()
             printf("SSL connected: %s %s\n", SSL_get_version(proxy->cli_ssl),
                    SSL_get_cipher(proxy->cli_ssl));
             proxy->client_handshake_done = true;
-            pxy_srcssl_setup(proxy);
+            pxy_servssl_setup(proxy);
             // copy the hello msg from buffer to bio;
             BIO_write(SSL_get_rbio(proxy->serv_ssl), proxy->client_hello_buf,
                       proxy->hello_msg_length);

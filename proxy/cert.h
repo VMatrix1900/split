@@ -34,6 +34,9 @@
 #include <openssl/ssl.h>
 #include <pthread.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 typedef struct cert {
   EVP_PKEY *key;
   X509 *crt;
@@ -52,6 +55,9 @@ void cert_set_crt(cert_t *, X509 *) NONNULL(1);
 void cert_set_chain(cert_t *, STACK_OF(X509) *) NONNULL(1);
 void cert_free(cert_t *) NONNULL(1);
 
+#ifdef __cplusplus
+}
+#endif /* extern c */
 #endif /* !CERT_H */
 
 /* vim: set noet ft=c: */

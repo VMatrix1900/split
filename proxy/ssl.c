@@ -28,8 +28,6 @@
 
 #include "ssl.h"
 
-#include "log.h"
-
 #include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
@@ -313,13 +311,13 @@ int ssl_init(void)
 /* randomness */
 #ifndef PURIFY
   if ((fd = open("/dev/urandom", O_RDONLY)) == -1) {
-    log_err_printf("Error opening /dev/urandom for reading: %s\n",
+    fprintf(stderr, "Error opening /dev/urandom for reading: %s\n",
                    strerror(errno));
     return -1;
   }
   while (!RAND_status()) {
     if (read(fd, buf, sizeof(buf)) == -1) {
-      log_err_printf("Error reading from /dev/urandom: %s\n", strerror(errno));
+      fprintf(stderr, "Error reading from /dev/urandom: %s\n", strerror(errno));
       close(fd);
       return -1;
     }
@@ -327,11 +325,11 @@ int ssl_init(void)
   }
   close(fd);
   if (!RAND_poll()) {
-    log_err_printf("RAND_poll() failed.\n");
+    fprintf(stderr, "RAND_poll() failed.\n");
     return -1;
   }
 #else  /* PURIFY */
-  log_err_printf("Warning: not seeding OpenSSL RAND due to PURITY!\n");
+  fprintf(stderr, "Warning: not seeding OpenSSL RAND due to PURITY!\n");
   memset(buf, 0, sizeof(buf));
   while (!RAND_status()) {
     RAND_seed(buf, sizeof(buf));
@@ -518,7 +516,7 @@ DH *ssl_tmp_dh_callback(UNUSED SSL *s, int is_export, int keylength)
   DH *dh;
 
   if (!(dh = DH_new())) {
-    log_err_printf("DH_new() failed\n");
+    fprintf(stderr, "DH_new() failed\n");
     return NULL;
   }
   switch (keylength) {
@@ -535,14 +533,14 @@ DH *ssl_tmp_dh_callback(UNUSED SSL *s, int is_export, int keylength)
     dh->p = BN_bin2bn(dh4096_p, sizeof(dh4096_p), NULL);
     break;
   default:
-    log_err_printf("Unhandled DH keylength %i%s\n", keylength,
+    fprintf(stderr, "Unhandled DH keylength %i%s\n", keylength,
                    (is_export ? " (export)" : ""));
     DH_free(dh);
     return NULL;
   }
   dh->g = BN_bin2bn(dh_g, sizeof(dh_g), NULL);
   if (!dh->p || !dh->g) {
-    log_err_printf("Failed to load DH p and g from memory\n");
+    fprintf(stderr, "Failed to load DH p and g from memory\n");
     DH_free(dh);
     return NULL;
   }
