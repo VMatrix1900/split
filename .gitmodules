@@ -1,0 +1,3 @@
+[submodule "cache/httpxx"]
+	path = cache/httpparserlib
+	url = https://github.com/VMatrix1900/httpxx.git
