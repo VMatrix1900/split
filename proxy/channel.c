@@ -1,4 +1,5 @@
 #include "channel.h"
+#include <pthread.h>
 #include <semaphore.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,7 +41,7 @@ int init_shm()
     perror("down_channel fail.");
     return -1;
   }
-  phread_mutex_init(&shm_mutex);
+  pthread_mutex_init(&shm_mutex, NULL);
   return 0;
 }
 
