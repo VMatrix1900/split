@@ -11,6 +11,7 @@
 key_t key_up = 1000;
 key_t key_down = 1001;
 
+pthread_mutex_t shm_mutex;
 struct shm_ctx_t *shm_ctx = NULL;
 
 int init_shm()
@@ -39,6 +40,7 @@ int init_shm()
     perror("down_channel fail.");
     return -1;
   }
+  phread_mutex_init(&shm_mutex);
   return 0;
 }
 
@@ -57,6 +59,7 @@ int destroy_shm()
 
 struct packet_info _pullPacketInfo(struct channel *channel)
 {
+  pthread_mutex_lock(&shm_mutex);
   struct packet_info pi = channel->circular[channel->read_head];
   if (pi.valid) {
     printf("read head is %d\n", channel->read_head);
@@ -64,6 +67,7 @@ struct packet_info _pullPacketInfo(struct channel *channel)
     channel->circular[channel->read_head].valid = false;
     channel->read_head = (channel->read_head + 1) % CIRCULAR_SZ;
   }
+  pthread_mutex_unlock(&shm_mutex);
   return pi;
 }
 
@@ -101,8 +105,10 @@ void UpdateToTCPReadPointer(int delta)
 
 int _pushPacketInfo(struct packet_info pi, struct channel *channel)
 {
+  pthread_mutex_lock(&shm_mutex);
   if (channel->circular[channel->write_head]
           .valid) {  // circular buffer is full
+    pthread_mutex_unlock(&shm_mutex);
     return -1;
   } else {
     channel->circular[channel->write_head] = pi;
@@ -111,6 +117,7 @@ int _pushPacketInfo(struct packet_info pi, struct channel *channel)
     assert(channel->circular[channel->write_head].length > 0);
     channel->write_head = (channel->write_head + 1) % CIRCULAR_SZ;
     channel->write = (channel->write + pi.length) % BUF_SZ;
+    pthread_mutex_unlock(&shm_mutex);
     return 0;
   }
 }
