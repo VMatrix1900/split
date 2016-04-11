@@ -82,19 +82,18 @@ void readcb(struct bufferevent *bev, void *ptr, enum packet_type side)
     while (PushToSSL(pi, write_pointer) < 0) {
       ;
     }
+    printf((side == client) ? "Client " : "Server ");
     printf("read %d data from network\n", pi.length);
   }
 }
 
 void cli_readcb(struct bufferevent *bev, void *ptr)
 {
-  printf("client:");
   readcb(bev, ptr, client);
 }
 
 void serv_readcb(struct bufferevent *bev, void *ptr)
 {
-  printf("server:");
   readcb(bev, ptr, server);
 }
 

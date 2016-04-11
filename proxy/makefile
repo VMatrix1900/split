@@ -9,7 +9,7 @@ SSL_SRCS := SSL_layer.c channel.c proxy_ssl.c ssl.c \
 			log.c dynbuf.c cert.c
 OBJS := $(SRCS:.c=.o)
 TCP_OBJ := TCP_layer.o proxy_tcp.o
-SHARED_LIB_OBJ := channel.o
+SHARED_LIB_OBJ := $(BUILDDIR)/channel.o
 
 SSL_OBJS := $(addprefix $(BUILDDIR)/, $(SSL_SRCS:.c=.o))
 TCP_OBJS := $(addprefix $(BUILDDIR)/, $(TCP_OBJ))

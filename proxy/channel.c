@@ -1,4 +1,5 @@
 #include "channel.h"
+#include <pthread.h>
 #include <semaphore.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,10 +7,12 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/stat.h>
+#include <assert.h>
 // name and the size of the shared memory segment.
 key_t key_up = 1000;
 key_t key_down = 1001;
 
+pthread_mutex_t shm_mutex;
 struct shm_ctx_t *shm_ctx = NULL;
 
 int init_shm()
@@ -38,6 +41,7 @@ int init_shm()
     perror("down_channel fail.");
     return -1;
   }
+  pthread_mutex_init(&shm_mutex, NULL);
   return 0;
 }
 
@@ -56,11 +60,15 @@ int destroy_shm()
 
 struct packet_info _pullPacketInfo(struct channel *channel)
 {
+  pthread_mutex_lock(&shm_mutex);
   struct packet_info pi = channel->circular[channel->read_head];
   if (pi.valid) {
+    printf("read head is %d\n", channel->read_head);
+    assert(pi.length > 0);
     channel->circular[channel->read_head].valid = false;
     channel->read_head = (channel->read_head + 1) % CIRCULAR_SZ;
   }
+  pthread_mutex_unlock(&shm_mutex);
   return pi;
 }
 
@@ -98,13 +106,19 @@ void UpdateToTCPReadPointer(int delta)
 
 int _pushPacketInfo(struct packet_info pi, struct channel *channel)
 {
+  pthread_mutex_lock(&shm_mutex);
   if (channel->circular[channel->write_head]
           .valid) {  // circular buffer is full
+    pthread_mutex_unlock(&shm_mutex);
     return -1;
   } else {
     channel->circular[channel->write_head] = pi;
+    printf((pi.side == client) ? "Client " : "Server ");
+    printf("write head is %d\n", channel->write_head);
+    assert(channel->circular[channel->write_head].length > 0);
     channel->write_head = (channel->write_head + 1) % CIRCULAR_SZ;
     channel->write = (channel->write + pi.length) % BUF_SZ;
+    pthread_mutex_unlock(&shm_mutex);
     return 0;
   }
 }

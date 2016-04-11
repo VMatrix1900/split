@@ -65,7 +65,6 @@ int main()
           peek_hello_msg(proxy, &pi);
         } else if (proxy->client_handshake_done &&
                    !proxy->server_handshake_done) {
-          printf("server ");
           receive_up(proxy, &pi);
           int r = SSL_do_handshake(proxy->serv_ssl);
           send_down(proxy, server);
@@ -94,7 +93,6 @@ int main()
           exit(-1);
         }
       } else if (pi.side == client) {
-        printf("client ");
         receive_up(proxy, &pi);
         // all record has been read into the SSL in_bio
         if (!proxy->client_handshake_done) {
