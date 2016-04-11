@@ -908,6 +908,7 @@ X509 *ssl_x509_load(const char *filename)
 
   tmpctx = SSL_CTX_new(SSLv23_server_method());
   if (!tmpctx) goto leave1;
+
   rv = SSL_CTX_use_certificate_file(tmpctx, filename, SSL_FILETYPE_PEM);
   if (rv != 1) goto leave2;
   tmpssl = SSL_new(tmpctx);
