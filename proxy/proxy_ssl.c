@@ -133,7 +133,7 @@ void send_down(struct proxy *proxy, enum packet_type side)
   int avaliable = 0;
   if (BIO_ctrl_pending(out_bio) > 0) {
     struct packet_info pi;
-    void *write_pointer = GetToTCPBufferAddr(&avaliable);
+   void *write_pointer = GetToTCPBufferAddr(&avaliable);
     pi.side = side;
     pi.id = proxy->index;
     pi.valid = true;
