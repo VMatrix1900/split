@@ -1,36 +1,26 @@
-#include <openssl/ssl.h>
-class ProxyServer
+#include "ProxyBase.hpp"
+class ProxyServer : public ProxyBase
 {
  private:
-  bool handshake_done;
   bool SNI_parsed;
-  int id;
-  SSL *ssl;
-  struct proxy_ctx *ctx;
   unsigned char client_hello_buf[1024];
   char *SNI;
   ssize_t hello_msg_length;
-  sendSNI();
+
+  void sendSNI();
 
  public:
-  receivePacket(char *packetbuffer, int length);
-  receiveCrt(char *crtbuffer, int length);
-  receiveRecord(char *recordbuffer, int length);
+  virtual void receivePacket(char *packetbuffer, int length);
+  void receiveCrt(char *crtbuffer, int length);
   ProxyServer(struct proxy_ctx *ctx, int id)
-      : handshake_done(false),
+    : ProxyBase(ctx, id),
         SNI_parsed(false),
-        id(id),
-        ssl(NULL),
-        ctx(ctx),
         SNI(NULL),
         hello_msg_length(0){};
   ~ProxyServer()
   {
-    if (0 == SSL_get_shutdown(ssl)) {
-      SSL_shutdown(ssl);
-    }
-    if (sni) {
-      free(sni);
+    if (SNI) {
+      free(SNI);
     }
   };
-}
+};
