@@ -1,6 +1,7 @@
+#include "proxy_ssl.h"
 int main() {
   initSharedMemory();
-  loadProxyCtx();
+  struct cert_ctx *ctx = load_cert_ctx();
   while (true) {
     while(pullPacket(packetbuffer)) {
       ps.receivePacket(packetbuffer);

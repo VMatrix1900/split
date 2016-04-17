@@ -53,6 +53,9 @@ void ProxyServer::receivePacket(char *packetbuffer, int length)
   }
 }
 
+void ProxyServer::sendSNI() {
+  sendMessage(sni, SNI, strlen(SNI) + 1);
+}
 void ProxyServer::receiveCrt(char *crtbuffer, int length)
 {
   // TODO get certificate from shared memory

@@ -101,7 +101,7 @@ void ssl_openssl_version(void)
 #else  /* OPENSSL_NO_THREADID */
   fprintf(stderr, "OpenSSL is thread-safe without THREADID\n");
 #endif /* OPENSSL_NO_THREADID */
-#else /* !OPENSSL_THREADS */
+#else  /* !OPENSSL_THREADS */
   fprintf(stderr, "OpenSSL is not thread-safe\n");
 #endif /* !OPENSSL_THREADS */
 #ifdef SSL_MODE_RELEASE_BUFFERS
@@ -303,7 +303,7 @@ int ssl_init(void)
   CRYPTO_set_dynlock_destroy_callback(ssl_thr_dyn_destroy_cb);
 #ifdef OPENSSL_NO_THREADID
   CRYPTO_set_id_callback(ssl_thr_id_cb);
-#else /* !OPENSSL_NO_THREADID */
+#else  /* !OPENSSL_NO_THREADID */
   CRYPTO_THREADID_set_callback(ssl_thr_id_cb);
 #endif /* !OPENSSL_NO_THREADID */
 #endif /* OPENSSL_THREADS */
@@ -312,7 +312,7 @@ int ssl_init(void)
 #ifndef PURIFY
   if ((fd = open("/dev/urandom", O_RDONLY)) == -1) {
     fprintf(stderr, "Error opening /dev/urandom for reading: %s\n",
-                   strerror(errno));
+            strerror(errno));
     return -1;
   }
   while (!RAND_status()) {
@@ -520,23 +520,23 @@ DH *ssl_tmp_dh_callback(UNUSED SSL *s, int is_export, int keylength)
     return NULL;
   }
   switch (keylength) {
-  case 512:
-    dh->p = BN_bin2bn(dh512_p, sizeof(dh512_p), NULL);
-    break;
-  case 1024:
-    dh->p = BN_bin2bn(dh1024_p, sizeof(dh1024_p), NULL);
-    break;
-  case 2048:
-    dh->p = BN_bin2bn(dh2048_p, sizeof(dh2048_p), NULL);
-    break;
-  case 4096:
-    dh->p = BN_bin2bn(dh4096_p, sizeof(dh4096_p), NULL);
-    break;
-  default:
-    fprintf(stderr, "Unhandled DH keylength %i%s\n", keylength,
-                   (is_export ? " (export)" : ""));
-    DH_free(dh);
-    return NULL;
+    case 512:
+      dh->p = BN_bin2bn(dh512_p, sizeof(dh512_p), NULL);
+      break;
+    case 1024:
+      dh->p = BN_bin2bn(dh1024_p, sizeof(dh1024_p), NULL);
+      break;
+    case 2048:
+      dh->p = BN_bin2bn(dh2048_p, sizeof(dh2048_p), NULL);
+      break;
+    case 4096:
+      dh->p = BN_bin2bn(dh4096_p, sizeof(dh4096_p), NULL);
+      break;
+    default:
+      fprintf(stderr, "Unhandled DH keylength %i%s\n", keylength,
+              (is_export ? " (export)" : ""));
+      DH_free(dh);
+      return NULL;
   }
   dh->g = BN_bin2bn(dh_g, sizeof(dh_g), NULL);
   if (!dh->p || !dh->g) {
@@ -770,22 +770,22 @@ X509 *ssl_x509_forge(X509 *cacrt, EVP_PKEY *cakey, X509 *origcrt,
   const EVP_MD *md;
   switch (EVP_PKEY_type(cakey->type)) {
 #ifndef OPENSSL_NO_RSA
-  case EVP_PKEY_RSA:
-    md = EVP_sha256();
-    break;
+    case EVP_PKEY_RSA:
+      md = EVP_sha256();
+      break;
 #endif /* !OPENSSL_NO_RSA */
 #ifndef OPENSSL_NO_DSA
-  case EVP_PKEY_DSA:
-    md = EVP_dss1();
-    break;
+    case EVP_PKEY_DSA:
+      md = EVP_dss1();
+      break;
 #endif /* !OPENSSL_NO_DSA */
 #ifndef OPENSSL_NO_ECDSA
-  case EVP_PKEY_EC:
-    md = EVP_ecdsa();
-    break;
+    case EVP_PKEY_EC:
+      md = EVP_ecdsa();
+      break;
 #endif /* !OPENSSL_NO_ECDSA */
-  default:
-    goto errout;
+    default:
+      goto errout;
   }
   if (!X509_sign(crt, cakey, md)) goto errout;
 
@@ -798,77 +798,6 @@ errout2:
 errout:
   X509_free(crt);
   return NULL;
-}
-
-/*
- * Load a X509 certificate chain from a PEM file.
- * Returns the first certificate in *crt and all subsequent certificates in
- * *chain.  If crt is NULL, the first certificate is prepended to *chain
- * instead of returned separately.  If *chain is NULL, a new stack of X509*
- * is created in *chain, else the certs are pushed onto an existing stack.
- * Returns -1 on error.
- * Not thread-safe.
- *
- * By accessing (SSLCTX*)->extra_certs directly on OpenSSL before 1.0.2, we
- * depend on OpenSSL internals in this function.  OpenSSL 1.0.2 introduced
- * the SSL_get0_chain_certs() API for accessing the certificate chain.
- */
-int ssl_x509chain_load(X509 **crt, STACK_OF(X509) * *chain,
-                       const char *filename)
-{
-  X509 *tmpcrt;
-  SSL_CTX *tmpctx;
-  SSL *tmpssl;
-  STACK_OF(X509) * tmpchain;
-  int rv;
-
-  if (ssl_init() == -1) return -1;
-
-  tmpctx = SSL_CTX_new(SSLv23_server_method());
-  if (!tmpctx) goto leave1;
-
-  rv = SSL_CTX_use_certificate_chain_file(tmpctx, filename);
-  if (rv != 1) goto leave2;
-  tmpssl = SSL_new(tmpctx);
-  if (!tmpssl) goto leave2;
-
-  tmpcrt = SSL_get_certificate(tmpssl);
-  if (!tmpcrt) goto leave3;
-
-  if (!*chain) {
-    *chain = sk_X509_new_null();
-    if (!*chain) goto leave3;
-  }
-
-#if (OPENSSL_VERSION_NUMBER < 0x1000200fL)
-  tmpchain = tmpctx->extra_certs;
-#else  /* OpenSSL >= 1.0.2 */
-  rv = SSL_CTX_get0_chain_certs(tmpctx, &tmpchain);
-  if (rv != 1) goto leave3;
-#endif /* OpenSSL >= 1.0.2 */
-
-  if (crt) {
-    *crt = tmpcrt;
-  } else {
-    sk_X509_push(*chain, tmpcrt);
-  }
-  ssl_x509_refcount_inc(tmpcrt);
-
-  for (int i = 0; i < sk_X509_num(tmpchain); i++) {
-    tmpcrt = sk_X509_value(tmpchain, i);
-    ssl_x509_refcount_inc(tmpcrt);
-    sk_X509_push(*chain, tmpcrt);
-  }
-  SSL_free(tmpssl);
-  SSL_CTX_free(tmpctx);
-  return 0;
-
-leave3:
-  SSL_free(tmpssl);
-leave2:
-  SSL_CTX_free(tmpctx);
-leave1:
-  return -1;
 }
 
 /*
@@ -888,64 +817,6 @@ void ssl_x509chain_use(SSL_CTX *sslctx, X509 *crt, STACK_OF(X509) * chain)
     sk_X509_push(sslctx->extra_certs, tmpcrt);
     SSL_CTX_add_extra_chain_cert(sslctx, tmpcrt);
   }
-}
-
-/*
- * Load a X509 certificate from a PEM file.
- * Returned X509 must be freed using X509_free() by the caller.
- * Not thread-safe.
- */
-X509 *ssl_x509_load(const char *filename)
-{
-  X509 *crt = NULL;
-  SSL_CTX *tmpctx;
-  SSL *tmpssl;
-  int rv;
-
-  if (ssl_init() == -1) return NULL;
-
-  tmpctx = SSL_CTX_new(SSLv23_server_method());
-  if (!tmpctx) goto leave1;
-  rv = SSL_CTX_use_certificate_file(tmpctx, filename, SSL_FILETYPE_PEM);
-  if (rv != 1) goto leave2;
-  tmpssl = SSL_new(tmpctx);
-  if (!tmpssl) goto leave2;
-  crt = SSL_get_certificate(tmpssl);
-  if (crt) ssl_x509_refcount_inc(crt);
-  SSL_free(tmpssl);
-leave2:
-  SSL_CTX_free(tmpctx);
-leave1:
-  return crt;
-}
-
-/*
- * Load a private key from a PEM file.
- * Returned EVP_PKEY must be freed using EVP_PKEY_free() by the caller.
- * Not thread-safe.
- */
-EVP_PKEY *ssl_key_load(const char *filename)
-{
-  EVP_PKEY *key = NULL;
-  SSL_CTX *tmpctx;
-  SSL *tmpssl;
-  int rv;
-
-  if (ssl_init() == -1) return NULL;
-
-  tmpctx = SSL_CTX_new(SSLv23_server_method());
-  if (!tmpctx) goto leave1;
-  rv = SSL_CTX_use_PrivateKey_file(tmpctx, filename, SSL_FILETYPE_PEM);
-  if (rv != 1) goto leave2;
-  tmpssl = SSL_new(tmpctx);
-  if (!tmpssl) goto leave2;
-  key = SSL_get_privatekey(tmpssl);
-  if (key) ssl_key_refcount_inc(key);
-  SSL_free(tmpssl);
-leave2:
-  SSL_CTX_free(tmpctx);
-leave1:
-  return key;
 }
 
 /*
@@ -1600,48 +1471,48 @@ char *ssl_tls_clienthello_parse_sni(const unsigned char *buf, ssize_t *sz)
     n -= 4;
     if (n < extlen) goto out;
     switch (exttype) {
-    case 0: {
-      ssize_t extn = extlen;
-      const unsigned char *extp = p;
+      case 0: {
+        ssize_t extn = extlen;
+        const unsigned char *extp = p;
 
-      if (extn < 2) goto out;
-      DBG_printf("list length %02x %02x\n", extp[0], extp[1]);
-      ssize_t namelistlen = extp[1] + (extp[0] << 8);
-      DBG_printf("namelistlen = %zd\n", namelistlen);
-      extp += 2;
-      extn -= 2;
+        if (extn < 2) goto out;
+        DBG_printf("list length %02x %02x\n", extp[0], extp[1]);
+        ssize_t namelistlen = extp[1] + (extp[0] << 8);
+        DBG_printf("namelistlen = %zd\n", namelistlen);
+        extp += 2;
+        extn -= 2;
 
-      if (namelistlen != extn) goto out;
+        if (namelistlen != extn) goto out;
 
-      while (extn > 0) {
-        if (extn < 3) goto out;
-        DBG_printf(
-            "ServerName type %02x"
-            " len %02x %02x\n",
-            extp[0], extp[1], extp[2]);
-        unsigned char sntype = extp[0];
-        ssize_t snlen = extp[2] + (extp[1] << 8);
-        extp += 3;
-        extn -= 3;
-        if (snlen > extn) goto out;
-        if (snlen > TLSEXT_MAXLEN_host_name) goto out;
-        if (sntype == 0) {
-          servername = malloc(snlen + 1);
-          memcpy(servername, extp, snlen);
-          servername[snlen] = '\0';
-          /* deliberately not checking
-           * for malformed hostnames
-           * containing invalid chars */
-          goto out;
+        while (extn > 0) {
+          if (extn < 3) goto out;
+          DBG_printf(
+              "ServerName type %02x"
+              " len %02x %02x\n",
+              extp[0], extp[1], extp[2]);
+          unsigned char sntype = extp[0];
+          ssize_t snlen = extp[2] + (extp[1] << 8);
+          extp += 3;
+          extn -= 3;
+          if (snlen > extn) goto out;
+          if (snlen > TLSEXT_MAXLEN_host_name) goto out;
+          if (sntype == 0) {
+            servername = malloc(snlen + 1);
+            memcpy(servername, extp, snlen);
+            servername[snlen] = '\0';
+            /* deliberately not checking
+             * for malformed hostnames
+             * containing invalid chars */
+            goto out;
+          }
+          extp += snlen;
+          extn -= snlen;
         }
-        extp += snlen;
-        extn -= snlen;
+        break;
       }
-      break;
-    }
-    default:
-      DBG_printf("skipped\n");
-      break;
+      default:
+        DBG_printf("skipped\n");
+        break;
     }
     p += extlen;
     n -= extlen;
@@ -1659,4 +1530,20 @@ out:
 }
 #endif /* !OPENSSL_NO_TLSEXT */
 
+EVP_PKEY *load_key(char *pkey_buffer)
+{
+  BIO *kbio = BIO_new_mem_buf((void *)pkey_buffer, -1);
+  EVP_PKEY *pkey = PEM_read_bio_PrivateKey(kbio, NULL, 0, NULL);
+  BIO_free(kbio);
+  return pkey;
+}
+
+// load cert from memory.
+X509 *load_certificate(char *cert_buffer)
+{
+  BIO *cbio = BIO_new_mem_buf((void *)cert_buffer, -1);
+  X509 *cert = PEM_read_bio_X509(cbio, NULL, 0, NULL);
+  BIO_free(cbio);
+  return cert;
+}
 /* vim: set noet ft=c: */

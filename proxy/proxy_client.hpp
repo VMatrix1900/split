@@ -4,11 +4,13 @@ class ProxyClient : public ProxyBase
 {
  private:
   void sendCrt();
+
  public:
   virtual void receivePacket(char *packetbuffer, int length);
   void receiveSNI(char *SNIbuffer);
   ProxyClient(struct proxy_ctx *ctx, int id) : ProxyBase(ctx, id)
   {
+    sendto = new Shared_buffer("PC2PS");
     const SSL_METHOD *meth = TLSv1_2_method();
     SSL_CTX *sslctx = SSL_CTX_new(meth);
     // now we ban begin initialize the client side.
@@ -43,11 +45,10 @@ class ProxyClient : public ProxyBase
 
 #ifdef SSL_MODE_RELEASE_BUFFERS
     /* lower memory footprint for idle connections */
-    SSL_set_mode(ssl,
-                 SSL_get_mode(ssl) | SSL_MODE_RELEASE_BUFFERS);
+    SSL_set_mode(ssl, SSL_get_mode(ssl) | SSL_MODE_RELEASE_BUFFERS);
 #endif /* SSL_MODE_RELEASE_BUFFERS */
     in_bio = SSL_get_rbio(ssl);
     out_bio = SSL_get_wbio(ssl);
   };
-  ~ProxyClient(){};
+  ~ProxyClient() { delete sendto; };
 };

@@ -41,7 +41,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-  
+
 /*
  * ECDH is disabled when building against OpenSSL < 1.0.0e due to issues with
  * thread-safety and security in server mode ephemereal ECDH cipher suites.
@@ -117,9 +117,9 @@ int ssl_init(void) WUNRES;
 void ssl_reinit(void);
 void ssl_fini(void);
 
-EVP_PKEY *load_key();
+EVP_PKEY *load_key(char *key_buffer);
 int init_ssl_bio(SSL *ssl) NONNULL(1);
-X509 *load_certificate();
+X509 *load_certificate(char *cert_buffer);
 
 char *ssl_ssl_state_to_str(SSL *) NONNULL(1) MALLOC;
 

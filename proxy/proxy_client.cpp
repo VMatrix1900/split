@@ -7,6 +7,15 @@ void ProxyClient::receiveSNI(char* SNIbuffer)
   sendPacket();
 }
 
+void ProxyClient::sendCrt() {
+  unsigned char cert[2 * 1024];
+  BIO *bio = BIO_new_mem_buf(BIO_s_mem());
+  PEM_write_bio_X509(bio, SSL_get_certificate(ssl));
+  int length = BIO_read(bio, cert, sizeof(cert));
+  cert[length] = '\0';
+  sendMessage(crt,cert,length + 1);
+}
+
 void ProxyClient::receivePacket(char* packetbuffer, int length)
 {
   int written = BIO_write(in_bio, packetbuffer, length);
