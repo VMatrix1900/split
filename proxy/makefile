@@ -40,6 +40,12 @@ test: $(BINDIR)/test_TCP $(BINDIR)/test_SSL
 	ipcrm -M 1000
 	ipcrm -M 1001
 
+$(BINDIR)/test_load: $(BUILDDIR)/test_load.o $(BUILDDIR)/ssl.o $(BUILDDIR)/proxy_ssl.o
+	$(CC) $(CFLAGS) -o $@ $^ -lssl -lcrypto
+
+test_load: $(BINDIR)/test_load
+	$(BINDIR)/test_load
+
 run_tcp: tcp
 	$(BINDIR)/tcp
 

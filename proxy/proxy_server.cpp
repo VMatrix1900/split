@@ -53,13 +53,11 @@ void ProxyServer::receivePacket(char *packetbuffer, int length)
   }
 }
 
-void ProxyServer::sendSNI() {
-  sendMessage(sni, SNI, strlen(SNI) + 1);
-}
-void ProxyServer::receiveCrt(char *crtbuffer, int length)
+void ProxyServer::sendSNI() { sendMessage(sni, SNI, strlen(SNI) + 1); }
+void ProxyServer::receiveCrt(char *crtbuffer)
 {
   // TODO get certificate from shared memory
-  X509 *origcrt = getCertificate();
+  X509 *origcrt = load_certificate(crtbuffer);
   if (!origcrt) {
     printf("get real certificate wrong!\n");
   }

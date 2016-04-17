@@ -4,7 +4,7 @@
 #include "cert.h"
 #include "ssl.h"
 
-struct proxy_ctx *load_cert_ctx()
+struct cert_ctx *load_cert_ctx()
 {
   char pkey[] =
       "-----BEGIN RSA PRIVATE KEY-----\n"
@@ -93,7 +93,7 @@ struct proxy_ctx *load_cert_ctx()
       "nym/IkG9TvE/zrA0Z+1ggGA7sVSDWjA1FxT4AKV6G/1wrmmgMlxt6DwkGCDMeUnI\n"
       "ByCEqkdggBoiTaQ9LRXVP5gdj8s+78qhKDxZJJOriAlg\n"
       "-----END CERTIFICATE-----\n";
-  struct proxy_ctx *channel = malloc(sizeof(struct proxy_ctx));
+  struct cert_ctx *channel = malloc(sizeof(struct cert_ctx));
   channel->cacrt = load_certificate(cert_buffer);
   if (!channel->cacrt) {
     printf("certf load error\n");

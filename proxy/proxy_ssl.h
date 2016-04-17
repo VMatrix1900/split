@@ -1,6 +1,5 @@
 #include <openssl/ssl.h>
 #include <stdbool.h>
-#include "channel.h"
 #include "constants.h"
 
 #ifdef __cplusplus

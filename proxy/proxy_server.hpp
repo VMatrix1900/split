@@ -11,16 +11,16 @@ class ProxyServer : public ProxyBase
 
  public:
   virtual void receivePacket(char *packetbuffer, int length);
-  void receiveCrt(char *crtbuffer, int length);
-  ProxyServer(struct proxy_ctx *ctx, int id)
-      : ProxyBase(ctx, id), SNI_parsed(false), SNI(NULL), hello_msg_length(0)
-  {
-    sendto = new Shared_buffer("PS2PC");
-  };
+  void receiveCrt(char *crtbuffer);
+  ProxyServer(struct cert_ctx *ctx, int id, shared_buffer *down,
+              shared_buffer *sendto)
+      : ProxyBase(ctx, id, down, sendto),
+        SNI_parsed(false),
+        SNI(NULL),
+        hello_msg_length(0){};
   ~ProxyServer()
   {
     delete sendto;
-    delete getfrom;
     if (SNI) {
       free(SNI);
     }

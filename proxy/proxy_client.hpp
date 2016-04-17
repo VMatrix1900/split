@@ -8,9 +8,8 @@ class ProxyClient : public ProxyBase
  public:
   virtual void receivePacket(char *packetbuffer, int length);
   void receiveSNI(char *SNIbuffer);
-  ProxyClient(struct proxy_ctx *ctx, int id) : ProxyBase(ctx, id)
+  ProxyClient(struct cert_ctx *ctx, int id, shared_buffer *down, shared_buffer *sendto) : ProxyBase(ctx, id, down, sendto)
   {
-    sendto = new Shared_buffer("PC2PS");
     const SSL_METHOD *meth = TLSv1_2_method();
     SSL_CTX *sslctx = SSL_CTX_new(meth);
     // now we ban begin initialize the client side.

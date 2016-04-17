@@ -1,15 +1,10 @@
 #include <openssl/ssl.h>
+#include <openssl/err.h>
+#include "constants.h"
+#include "proxy_ssl.h"
+#include "shared_buffer.hpp"
 #include <cassert>
-#define PACKET_MAX_SZ (2 << 14)
-enum message_type { record, sni, crt };
-struct message_info {
-  enum message_type type;
-  int size;
-};
-struct packet_info {
-  int id;
-  int size;
-} class ProxyBase
+class ProxyBase
 {
  protected:
   bool handshake_done;
@@ -18,9 +13,9 @@ struct packet_info {
   SSL *ssl;
   BIO *in_bio;
   BIO *out_bio;
-  struct proxy_ctx *ctx;
-  Shared_buffer *down;
-  Shared_buffer *sendto;
+  struct cert_ctx *ctx;
+  shared_buffer *down;
+  shared_buffer *sendto;
 
   void sendPacket();
   void forwardRecord();
@@ -31,20 +26,19 @@ struct packet_info {
  public:
   virtual void receivePacket(char *packetbuffer, int length);
   void receiveRecord(char *recordbuffer, int length);
-  ProxyBase(struct proxy_ctx *ctx, int id)
+  ProxyBase(struct cert_ctx *ctx, int id, shared_buffer *down,
+            shared_buffer *sendto)
       : handshake_done(false),
         closed(false),
         id(id),
         ssl(NULL),
         in_bio(NULL),
         out_bio(NULL),
-        ctx(ctx)
-  {
-    down = new Shared_buffer("down");
-  };
+        ctx(ctx),
+        down(down),
+        sendto(sendto){};
   ~ProxyBase()
   {
-    delete down;
     if (0 == SSL_get_shutdown(ssl)) {
       SSL_shutdown(ssl);
     }
@@ -54,27 +48,27 @@ struct packet_info {
 void ProxyBase::sendPacket()
 {
   if (BIO_ctrl_pending(out_bio) > 0) {
-    int avaliable = down.getAvaliable();  // do we have this interface?
-    // TODO use a fixed one.
-    struct packet_info *pi = malloc(sizeof(packet_info) + avaliable);
+    // int avaliable = down.getAvaliable();  // do we have this interface?
+    int avaliable = MAX_PACKET_SIZE;  // do we have this interface?
+    struct packet *pi = (struct packet *)malloc(sizeof(struct packet));
     pi->id = id;
-    pi->size = BIO_read(out_bio, pi + 1, avaliable);
-    down.putData(pi, sizeof(packet_info) + pi->size);
+    pi->size = BIO_read(out_bio, pi->buffer, avaliable);
+    down->putData((char *)pi, pi->size + offsetof(struct packet, buffer));
     free(pi);
   }
 }
 
 void ProxyBase::forwardRecord()
 {
-  char buf[PACKET_MAX_SZ] = {'0'};
+  char buf[MAX_PACKET_SIZE] = {'0'};
   char *write_head = buf;
   int size = 0;
   int length = 0;
 
-  while ((length = SSL_read(ssl, write_head, (PACKET_MAX_SZ)-size)) > 0) {
+  while ((length = SSL_read(ssl, write_head, (MAX_PACKET_SIZE)-size)) > 0) {
     write_head += length;
     size += length;
-    if (size == PACKET_MAX_SZ) {
+    if (size == MAX_PACKET_SIZE) {
       printf("BUFfer is full!\n");
       break;
     }
@@ -123,11 +117,12 @@ void ProxyBase::forwardRecord()
 
 void ProxyBase::sendMessage(enum message_type type, char *msgbuffer, int length)
 {
-  struct message_info *msg = malloc(sizeof(struct message_info) + length);
+  struct message *msg = (struct message *)malloc(sizeof(struct message));
   msg->type = type;
+  msg->id = id;
   msg->size = length;
-  memcpy(msg + 1, msgbuffer, length);
-  sendto->putdata(msg, length);
+  memcpy(msg->buffer, msgbuffer, length);
+  sendto->putData((char *)msg, length + offsetof(struct message, buffer));
   free(msg);
 }
 
