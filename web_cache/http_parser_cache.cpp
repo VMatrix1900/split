@@ -1,5 +1,7 @@
 #include "http_parser_cache.hpp"
+#ifndef IN_LINUX
 #include <base/env.h>
+#endif
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -9,7 +11,8 @@
 Secure_box::HTTPStreamParser *Secure_box::Web_cache::GetParser(int id) {
   // search the existing one first
   if (_parsers[id] == (Secure_box::HTTPStreamParser *)0) {
-    _parsers[id] = new (Genode::env()->heap()) Secure_box::HTTPStreamParser;
+    // _parsers[id] = new (Genode::env()->heap()) Secure_box::HTTPStreamParser;
+    _parsers[id] = new Secure_box::HTTPStreamParser;
   }
 
   return _parsers[id];
@@ -17,24 +20,25 @@ Secure_box::HTTPStreamParser *Secure_box::Web_cache::GetParser(int id) {
 
 void Secure_box::Web_cache::Delete_parser(int id) {
   if (_parsers[id] != (Secure_box::HTTPStreamParser *)0) {
-    Genode::destroy(Genode::env()->heap(), _parsers[id]);
+    // Genode::destroy(Genode::env()->heap(), _parsers[id]);
+    delete _parsers[id];
     _parsers[id] = (Secure_box::HTTPStreamParser *)0;
   }
 }
 
 void Secure_box::Web_cache::SendRecord(std::string text, enum packet_type side,
                                        int id) {
-  struct message *msg = (struct message *)malloc(sizeof(struct message));
+  struct Plaintext *msg = (struct Plaintext *)malloc(sizeof(struct Plaintext));
   int length = text.length();
   const char *buf = text.c_str();
-  Secure_box::shared_buffer *dst = (side == client) ? to_client : to_server;
-  msg->type = record;
+  Channel *dst = (side == client) ? to_client : to_server;
+  msg->type = HTTP;
   msg->id = id;
   while (length > 0) {
     msg->size = std::min(length, MAX_MSG_SIZE);
     memcpy(msg->buffer, buf, msg->size);
     while (dst->put_data((void *)msg,
-                         msg->size + offsetof(struct message, buffer)) == 0) {
+                         msg->size + offsetof(struct Plaintext, buffer)) == 0) {
       ;
     }
     length -= msg->size;
@@ -46,13 +50,13 @@ void Secure_box::Web_cache::SendRecord(std::string text, enum packet_type side,
 }
 
 void Secure_box::Web_cache::SendCloseAlert(enum packet_type side, int id) {
-  struct message *msg = (struct message *)malloc(sizeof(struct message));
-  Secure_box::shared_buffer *dst = (side == client) ? to_client : to_server;
-  msg->type = close;
+  struct Plaintext *msg = (struct Plaintext *)malloc(sizeof(struct Plaintext));
+  Channel *dst = (side == client) ? to_client : to_server;
+  msg->type = CLOSE;
   msg->id = id;
   msg->size = 0;
   while (dst->put_data((void *)msg,
-                       msg->size + offsetof(struct message, buffer)) == 0) {
+                       msg->size + offsetof(struct Plaintext, buffer)) == 0) {
     ;
   }
   free(msg);

@@ -6,8 +6,10 @@
 class ProxyClient : public ProxyBase
 {
  private:
+  #ifdef MEASURE_TIME
   unsigned long begin_handshake;
   unsigned long end_handshake;
+  #endif
   void sendCrt();
   HTTP2Stream stream_data;
 
@@ -17,11 +19,12 @@ class ProxyClient : public ProxyBase
   void receiveSNI(char *SNIbuffer);
   void forwardRecordForHTTP2();
   void receiveRecord(const char *recordbuffer, int length);
-  ProxyClient(struct cert_ctx *ctx, int id, Secure_box::shared_buffer *down,
-              Secure_box::shared_buffer *otherside,
-              Secure_box::shared_buffer *to_mb, struct packet *pkt,
-              struct message *msg);
-  ~ProxyClient() { delete otherside; };
+  ProxyClient(struct cert_ctx *ctx, int id, Channel *down,
+              Channel *otherside,
+              Channel *to_mb, struct TLSPacket *pkt,
+              struct Plaintext *msg);
+  ~ProxyClient() { // TODO reconsider the delete
+    delete otherside; };
 };
 
 namespace

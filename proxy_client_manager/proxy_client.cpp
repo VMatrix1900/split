@@ -1,9 +1,9 @@
 #include "proxy_client.hpp"
 
-ProxyClient::ProxyClient(struct cert_ctx *ctx, int id, Secure_box::shared_buffer *down,
-              Secure_box::shared_buffer *otherside,
-              Secure_box::shared_buffer *to_mb, struct packet *pkt,
-              struct message *msg)
+ProxyClient::ProxyClient(struct cert_ctx *ctx, int id, Channel *down,
+              Channel *otherside,
+              Channel *to_mb, struct TLSPacket *pkt,
+              struct Plaintext *msg)
   : ProxyBase(ctx, id, down, otherside, to_mb, pkt, msg) {
     const SSL_METHOD *meth = TLSv1_2_method();
     SSL_CTX *sslctx = SSL_CTX_new(meth);
@@ -47,8 +47,10 @@ ProxyClient::ProxyClient(struct cert_ctx *ctx, int id, Secure_box::shared_buffer
 }
 
 void ProxyClient::receiveSNI(char* SNIbuffer) {
+  #ifdef MEASURE_TIME
   begin_handshake = Genode::Trace::timestamp();
   // printf("[%d]::begin[%lu]\n", id, begin_handshake / 1000000);
+  #endif
   if (strlen(SNIbuffer) != 0) {
     SSL_set_tlsext_host_name(ssl, SNIbuffer);
   }
@@ -59,7 +61,7 @@ void ProxyClient::receiveSNI(char* SNIbuffer) {
 
 void ProxyClient::sendCrt() {
   char* cert = store_cert(SSL_get_peer_certificate(ssl));
-  sendMessage(crt, cert, strlen(cert) + 1);
+  sendMessage(CRT, cert, strlen(cert) + 1);
   free(cert);
 }
 
@@ -69,7 +71,9 @@ void ProxyClient::forwardRecordForHTTP2() {
     int size = 0;
     int length = 0;
 
+    #ifdef MEASURE_TIME
     t3 = Genode::Trace::timestamp();
+    #endif
     while ((length = SSL_read(ssl, write_head, (MAX_MSG_SIZE)-size)) > 0) {
       // printf("read %d data", length);
       write_head += length;
@@ -187,8 +191,10 @@ void ProxyClient::receivePacket(const char* packetbuffer, int length) {
       if (!first_msg_buf.empty()) {
         receiveRecord(first_msg_buf.c_str(), first_msg_buf.length());
       }
+      #ifdef MEASURE_TIME
       end_handshake = Genode::Trace::timestamp();
       // printf("[%d]:: end[%lu]\n", id, end_handshake / 1000000);
+      #endif
       sendCrt();
     }
   } else {

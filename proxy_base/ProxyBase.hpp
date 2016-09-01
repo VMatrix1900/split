@@ -3,11 +3,9 @@
 #include <openssl/err.h>
 #include <string>
 #include <iostream>
-#include "channel.h"
+#include "message.h"
 #include "proxy_ssl.h"
-#include <trace/timestamp.h>  //timestamp
-#include <sharedmem_session/connection.h>
-#include <securebox_session/shared_buffer.h>
+#include "channel.hpp"
 
 class ProxyBase {
  protected:
@@ -18,13 +16,15 @@ class ProxyBase {
   BIO *in_bio;
   BIO *out_bio;
   struct cert_ctx *ctx;
-  Secure_box::shared_buffer *down;
-  Secure_box::shared_buffer *otherside;
-  Secure_box::shared_buffer *to_mb;
-  struct packet *pkt;
-  struct message *msg;
+  Channel *down;
+  Channel *otherside;
+  Channel *to_mb;
+  struct TLSPacket *pkt;
+  struct Plaintext *msg;
   std::string first_msg_buf;
+#ifdef MEASURE_TIME
   volatile unsigned int t1, t2, overhead, t3, t4;
+#endif
   int i, j;
   double pkt_speed;
   double record_speed;
@@ -35,8 +35,8 @@ class ProxyBase {
       int avaliable = MAX_PACKET_SIZE;  // do we have this interface?
       pkt->id = id;
       pkt->size = BIO_read(out_bio, pkt->buffer, avaliable);
-      while (down->put_data((void *)pkt,
-                            pkt->size + offsetof(struct packet, buffer)) == 0) {
+      while (down->put_data((void *)pkt, pkt->size + offsetof(struct TLSPacket,
+                                                              buffer)) == 0) {
         ;
       }
       // printf("packet sent down\n");
@@ -50,7 +50,9 @@ class ProxyBase {
     int size = 0;
     int length = 0;
 
+#ifdef MEASURE_TIME
     t3 = Genode::Trace::timestamp();
+#endif
     while ((length = SSL_read(ssl, write_head, (MAX_MSG_SIZE)-size)) > 0) {
       write_head += length;
       size += length;
@@ -101,6 +103,7 @@ class ProxyBase {
     if (!size) {
       return;
     }
+#ifdef MEASURE_TIME
     t4 = Genode::Trace::timestamp();
     record_speed += (double)size / (t4 - t3 - overhead);
     j++;
@@ -109,16 +112,17 @@ class ProxyBase {
       record_speed = 0;
       j = 0;
     }
+#endif
     sendRecord(buf, size);
     // sendRecord(buf, size >> 1);
     // sendRecord(buf + (size >> 1), size - (size >> 1));
   }
 
-  void sendMessage(enum message_type type, char *msgbuffer, int length) {
+  void sendMessage(enum TextType type, char *msgbuffer, int length) {
     msg->type = type;
     msg->id = id;
-    Secure_box::shared_buffer *sendto;
-    if (type == record || type == close) {  // send it to middlebox
+    Channel *sendto;
+    if (type == HTTP || type == CLOSE) {  // send it to middlebox
       sendto = to_mb;
     } else {
       sendto = otherside;
@@ -127,7 +131,8 @@ class ProxyBase {
       msg->size = (length <= MAX_MSG_SIZE) ? length : MAX_MSG_SIZE;
       memcpy(msg->buffer, msgbuffer, length);
       while (sendto->put_data((void *)msg,
-                              msg->size + offsetof(struct message, buffer)) == 0) {
+                              msg->size + offsetof(struct Plaintext, buffer)) ==
+             0) {
         ;
       }
       length -= msg->size;
@@ -138,13 +143,14 @@ class ProxyBase {
   }
 
   void sendRecord(char *recordbuffer, int length) {
-    sendMessage(record, recordbuffer, length);
+    sendMessage(HTTP, recordbuffer, length);
   }
 
   void sendCloseAlertDown() {
     pkt->id = id;
     pkt->size = -1;
-    while (down->put_data((void *)pkt, offsetof(struct packet, buffer)) == 0) {
+    while (down->put_data((void *)pkt, offsetof(struct TLSPacket, buffer)) ==
+           0) {
       ;
     }
   }
@@ -152,9 +158,7 @@ class ProxyBase {
  public:
   bool handshakedone() { return handshake_done; }
 
-  void sendCloseAlertToOther() {
-    sendMessage(close, NULL, -1);
-  }
+  void sendCloseAlertToOther() { sendMessage(CLOSE, NULL, -1); }
 
   void receiveCloseAlert() {
     sendPacket();
@@ -166,7 +170,9 @@ class ProxyBase {
       first_msg_buf += std::string(recordbuffer, length);
       return;
     }
+    #ifdef MEASURE_TIME
     t1 = Genode::Trace::timestamp();
+    #endif
     int r = SSL_write(ssl, recordbuffer, length);
     // printf("dig into receive record\n");
     // t2 = Genode::Trace::timestamp();
@@ -200,10 +206,8 @@ class ProxyBase {
       sendPacket();
     }
   }
-  ProxyBase(struct cert_ctx *ctx, int id, Secure_box::shared_buffer *down,
-            Secure_box::shared_buffer *otherside,
-            Secure_box::shared_buffer *to_mb, struct packet *pkt,
-            struct message *msg)
+  ProxyBase(struct cert_ctx *ctx, int id, Channel *down, Channel *otherside,
+            Channel *to_mb, struct TLSPacket *pkt, struct Plaintext *msg)
       : handshake_done(false),
         closed(false),
         id(id),
@@ -217,6 +221,7 @@ class ProxyBase {
         pkt(pkt),
         msg(msg),
         first_msg_buf("") {
+    #ifdef MEASURE_TIME
     t1 = 0;
     t2 = 0;
     t3 = 0;
@@ -228,6 +233,7 @@ class ProxyBase {
     record_speed = 0;
     t1 = Genode::Trace::timestamp();
     overhead = Genode::Trace::timestamp() - t1;  // time measuring overhead
+    #endif
   };
   ~ProxyBase() {
     if (0 == SSL_get_shutdown(ssl)) {

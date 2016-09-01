@@ -1,0 +1,6 @@
+cmake_minimum_required (VERSION 3.0)
+project (proxy_server)
+find_package(OpenSSL)
+include_directories(${OPENSSL_INCLUDE_DIR} ../proxy_base)
+add_executable(ps main.cc proxy_server.cpp)
+target_link_libraries(ps LINK_PUBLIC channel ssl_util proxy_ssl)

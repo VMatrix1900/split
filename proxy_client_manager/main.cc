@@ -1,24 +1,32 @@
 #include "proxy_ssl.h"
-#include "channel.h"
+#include "message.h"
 #include "proxy_client.hpp"
 #include "ssl.h"
 #include <stdio.h>
-#include <trace/timestamp.h>           //timestamp
+#ifdef MEASURE_TIME
+#include <trace/timestamp.h>  //timestamp
+#endif
+#ifndef IN_LINUX
 #include <timer_session/connection.h>  //timer
-Secure_box::shared_buffer up;
-Secure_box::shared_buffer down;
-Secure_box::shared_buffer ps_to_pc;
-Secure_box::shared_buffer pc_to_ps;
-Secure_box::shared_buffer mb_to_client;
-Secure_box::shared_buffer client_to_mb;
-Timer::Connection timer;
+#endif
+Channel up("up_client");
+Channel down("down_client");
+Channel ps_to_pc("ps_to_pc");
+Channel pc_to_ps("pc_to_ps");
+Channel mb_to_client("mb_to_client");
+Channel client_to_mb("client_to_mb");
 
 int main() {
+#ifndef IN_LINUX
+  Timer::Connection timer;
   timer.msleep(35 * 1000);
+#endif
+#ifdef MEASURE_TIME
   volatile unsigned int t1 = 0, t2 = 0, overhead = 0;
   t1 = Genode::Trace::timestamp();
   overhead = Genode::Trace::timestamp() - t1;  // time measuring overhead
   PDBG("time measuring overhead is: %u\n", overhead);
+#endif
   // time_t tmp;
   // time(&tmp);
   // printf("time is %s\n", ctime(&tmp));
@@ -27,18 +35,20 @@ int main() {
   }
   ERR_load_BIO_strings();
   // printf("get ctx\n");
-  up.initialize_queue((char *)"up_client");
-  down.initialize_queue((char *)"down_client");
-  ps_to_pc.initialize_queue((char *)"ps_to_pc");
-  pc_to_ps.initialize_queue((char *)"pc_to_ps");
-  client_to_mb.initialize_queue((char *)"client_to_mb");
-  mb_to_client.initialize_queue((char *)"mb_to_client");
-  struct packet *pkt = (struct packet *)malloc(sizeof(struct packet));
-  struct message *msg = (struct message *)malloc(sizeof(struct message));
+  // up.initialize_queue((char *)"up_client");
+  // down.initialize_queue((char *)"down_client");
+  // ps_to_pc.initialize_queue((char *)"ps_to_pc");
+  // pc_to_ps.initialize_queue((char *)"pc_to_ps");
+  // client_to_mb.initialize_queue((char *)"client_to_mb");
+  // mb_to_client.initialize_queue((char *)"mb_to_client");
+  struct TLSPacket *pkt = (struct TLSPacket *)malloc(sizeof(struct TLSPacket));
+  struct Plaintext *msg = (struct Plaintext *)malloc(sizeof(struct Plaintext));
   ProxyClient **pcs = (ProxyClient **)malloc(MAXCONNS * sizeof(ProxyClient *));
   for (int i = 0; i < MAXCONNS; i++) {
-    pcs[i] = new (Genode::env()->heap())
-        ProxyClient(NULL, i, &down, &pc_to_ps, &client_to_mb, pkt, msg);
+    // pcs[i] = new (Genode::env()->heap())
+    //     ProxyClient(NULL, i, &down, &pc_to_ps, &client_to_mb, pkt, msg);
+    pcs[i] =
+        new ProxyClient(NULL, i, &down, &pc_to_ps, &client_to_mb, pkt, msg);
   }
 
   printf("proxy client is running\n");
@@ -46,9 +56,11 @@ int main() {
   double pkt_speed = 0;
   while (true) {
     bool newdata = false;
-    if (up.pull_data((void *)pkt, sizeof(struct packet)) > 0) {
+    if (up.pull_data((void *)pkt, sizeof(struct TLSPacket)) > 0) {
       newdata = true;
+#ifdef MEASURE_TIME
       t1 = Genode::Trace::timestamp();
+#endif
       ProxyClient *pc = pcs[pkt->id];
       // printf("%d receive %d from lb\n", pkt->id, pkt->size);
       // up.print_headers();
@@ -69,26 +81,26 @@ int main() {
       //   i = 0;
       // }
     }
-    if (ps_to_pc.pull_data((char *)msg, sizeof(struct message)) > 0) {
+    if (ps_to_pc.pull_data((char *)msg, sizeof(struct Plaintext)) > 0) {
       // distribute the message:
       // printf("%d receive from ps\n", msg->id);
-      enum message_type tp = msg->type;
+      enum TextType tp = msg->type;
       ProxyClient *pc = pcs[msg->id];
-      if (tp == sni) {
+      if (tp == SNI) {
         pc->receiveSNI(msg->buffer);
       } else {
         fprintf(stderr, "wrong type\n");
       }
     }
-    if (mb_to_client.pull_data((char *)msg, sizeof(struct message)) > 0) {
+    if (mb_to_client.pull_data((char *)msg, sizeof(struct Plaintext)) > 0) {
       // distribute the message:
       // printf("%d receive from mb\n", msg->id);
       // std::cerr << std::string(msg->buffer, msg->size);
-      enum message_type tp = msg->type;
+      enum TextType tp = msg->type;
       ProxyClient *pc = pcs[msg->id];
-      if (tp == record) {
+      if (tp == HTTP) {
         pc->receiveRecord(msg->buffer, msg->size);
-      } else if (tp == close){
+      } else if (tp == CLOSE) {
         // printf("%d receive close from mb\n", msg->id);
         pc->receiveCloseAlert();
       } else {

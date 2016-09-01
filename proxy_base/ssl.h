@@ -25,10 +25,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
-#ifndef SSL_H
-#define SSL_H
-
+#pragma once
 #include "attrib.h"
 
 #include <openssl/err.h>
@@ -180,6 +177,4 @@ char *store_cert(X509 *crt);
 #ifdef __cplusplus
 }
 #endif /* extern c */
-#endif /* !SSL_H */
-
 /* vim: set noet ft=c: */

@@ -3,10 +3,13 @@
 #include <string>
 #include <stddef.h>
 #include "httpxx/http.hpp"
-#include "channel.h"
+#include "message.h"
 #include "cache.hpp"
+#include "channel.hpp"
+#ifndef IN_LINUX
 #include <sharedmem_session/connection.h>
 #include <securebox_session/shared_buffer.h>
+#endif
 
 namespace Secure_box
 {
@@ -32,12 +35,12 @@ class Secure_box::Web_cache
   Secure_box::HTTPStreamParser
       *_parsers[MAXCONNS];  // this will cause inster_traslation assertion
   cache::Resource _resourcecache;
-  Secure_box::shared_buffer *to_client;
-  Secure_box::shared_buffer *to_server;
+  Channel *to_client;
+  Channel *to_server;
 
  public:
-  Web_cache(Secure_box::shared_buffer *to_client,
-            Secure_box::shared_buffer *to_server)
+  Web_cache(Channel *to_client,
+            Channel *to_server)
       : to_client(to_client), to_server(to_server)
   {
     for (unsigned i = 0; i < MAXCONNS; i++) {

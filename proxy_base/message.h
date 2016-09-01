@@ -1,13 +1,14 @@
 #pragma once
 #include "constants.h"
-enum message_type { record, sni, crt, close };
-struct message {
-  enum message_type type;
+enum TextType {HTTP, SNI, CRT, CLOSE };
+struct Plaintext {
+  enum TextType type;
   int id;
   int size;
   char buffer[MAX_MSG_SIZE];
 };
-struct packet {
+
+struct TLSPacket {
   int id;
   int size;
   char buffer[MAX_PACKET_SIZE];

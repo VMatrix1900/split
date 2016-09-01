@@ -9,18 +9,18 @@ void ProxyServer::receivePacket(const char *packetbuffer, int length) {
     memcpy(client_hello_buf + hello_msg_length, packetbuffer, length);
     hello_msg_length += length;
     ssize_t result = hello_msg_length;
-    SNI = ssl_tls_clienthello_parse_sni(client_hello_buf, &result);
-    if (!SNI && (-1 == result)) {
+    SNI_buffer = ssl_tls_clienthello_parse_sni(client_hello_buf, &result);
+    if (!SNI_buffer && (-1 == result)) {
       // client hello msg is incomplete. set the flag, wait for another
       // msg.
     } else {
       SNI_parsed = true;
-      if (SNI) {
-        printf("[%d] sni is parsed %s\n", id, SNI);
+      if (SNI_buffer) {
+        printf("[%d] sni is parsed %s\n", id, SNI_buffer);
         // sni parse is finished. now the server ssl is not ready. so we can
         // only initiate client hanshake.
         // check to see if we have fake certificate cached here;
-        Cache::const_iterator it = cert_cache->find(std::string(SNI));
+        Cache::const_iterator it = cert_cache->find(std::string(SNI_buffer));
         if (it != cert_cache->end()) {
           // printf("[%d] cache hit, begin receive crt\n", id);
           createSSL(load_certificate(it->second.c_str()));
@@ -28,8 +28,8 @@ void ProxyServer::receivePacket(const char *packetbuffer, int length) {
         // printf("[%d]::SNI parsed[%lu] \n", id, Genode::Trace::timestamp() /
         // 1000000);
       } else {
-        SNI = (char *)malloc(1);
-        SNI[0] = '\0';
+        SNI_buffer = (char *)malloc(1);
+        SNI_buffer[0] = '\0';
       }
       sendSNI();
     }
@@ -72,8 +72,8 @@ void ProxyServer::receivePacket(const char *packetbuffer, int length) {
 
 void ProxyServer::sendSNI() {
   // fprintf(stderr, "[%d] ps send sni\n", id);
-  if (SNI) {
-    sendMessage(sni, SNI, strlen(SNI) + 1);
+  if (SNI_buffer) {
+    sendMessage(SNI, SNI_buffer, strlen(SNI_buffer) + 1);
   }
 }
 
@@ -164,7 +164,7 @@ void ProxyServer::receiveCrt(const char *crtbuffer) {
   // 1000000);
   X509 *origcrt = load_certificate(crtbuffer);
   if (!origcrt) {
-    printf("[%d] get real certificate wrong!: %s\n", id, SNI);
+    printf("[%d] get real certificate wrong!: %s\n", id, SNI_buffer);
   }
 
   // printf("[%d]::before fake cert[%lu] \n", id, Genode::Trace::timestamp() /
@@ -178,6 +178,6 @@ void ProxyServer::receiveCrt(const char *crtbuffer) {
 
   char *cert_buffer = store_cert(fakecrt);
   cert_cache->insert(
-      std::make_pair(std::string(SNI), std::string(cert_buffer)));
+      std::make_pair(std::string(SNI_buffer), std::string(cert_buffer)));
   createSSL(fakecrt);
 }
