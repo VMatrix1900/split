@@ -51,9 +51,12 @@ int main() {
         new ProxyClient(NULL, i, &down, &pc_to_ps, &client_to_mb, pkt, msg);
   }
 
+  // TODO keep a map between packet id and pc id.
   printf("proxy client is running\n");
+#ifdef MEASURE_TIME
   int i = 0;
   double pkt_speed = 0;
+#endif
   while (true) {
     bool newdata = false;
     if (up.pull_data((void *)pkt, sizeof(struct TLSPacket)) > 0) {

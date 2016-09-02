@@ -4,7 +4,7 @@
 #include <map>
 #include <string>
 #include <vector>
-#include "http2stream.hpp"
+#include <nghttp2/nghttp2.h>
 namespace {
   const char LOWER_XDIGITS[] = "0123456789abcdef";
 } // namespace

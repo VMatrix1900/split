@@ -4,7 +4,7 @@
 
 // typedef ssize_t (*send_data_callback)(const uint8_t *data, size_t length);
 #define _U_ __attribute__((unused))
-class HTTP2Stream {
+class HTTP2Client {
 public:
   int32_t stream_id;
   nghttp2_session *session;
@@ -14,7 +14,7 @@ public:
   volatile bool responseParsed;
 
 public:
-  HTTP2Stream();
+  HTTP2Client();
 
   std::string sendHTTP1Request(const char *buf, size_t len);
   ssize_t parseHTTP2Response(const uint8_t *in, size_t len);

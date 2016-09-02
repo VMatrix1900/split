@@ -24,10 +24,10 @@ class ProxyBase {
   std::string first_msg_buf;
 #ifdef MEASURE_TIME
   volatile unsigned int t1, t2, overhead, t3, t4;
-#endif
   int i, j;
   double pkt_speed;
   double record_speed;
+#endif
 
   void sendPacket() {
     if (BIO_ctrl_pending(out_bio) > 0) {

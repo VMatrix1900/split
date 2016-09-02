@@ -4,7 +4,7 @@
 #include <map>
 #include <string>
 #include <vector>
-#include "http2stream.hpp"
+#include "http2client.hpp"
 #include "util.hpp"
 
 #define ARRLEN(x) (sizeof(x) / sizeof(x[0]))
@@ -15,7 +15,7 @@ static int on_header_callback(nghttp2_session *session _U_,
                               size_t valuelen, uint8_t flags _U_,
                               void *user_data) {
   // std::cout << "receive header:  "  << frame->hd.type << std::endl;
-  HTTP2Stream *stream = (HTTP2Stream *)user_data;
+  HTTP2Client *stream = (HTTP2Client *)user_data;
   http::ResponseBuilder &response = stream->response;
   nghttp2_nv nv = {const_cast<uint8_t *>(name), const_cast<uint8_t *>(value),
                    namelen, valuelen};
@@ -42,7 +42,7 @@ static int on_header_callback(nghttp2_session *session _U_,
 static int on_frame_recv_callback(nghttp2_session *session _U_,
                                   const nghttp2_frame *frame, void *user_data) {
   print_frame(PRINT_RECV, frame);
-  HTTP2Stream *stream = (HTTP2Stream *)user_data;
+  HTTP2Client *stream = (HTTP2Client *)user_data;
   switch (frame->hd.type) {
     case NGHTTP2_HEADERS:
       std::cout << "Headers" << std::endl;
@@ -88,7 +88,7 @@ static int on_begin_frame_callback(nghttp2_session *session,
 
 static int on_stream_close_callback(nghttp2_session *session, int32_t stream_id,
                                     uint32_t error_code, void *user_data) {
-  HTTP2Stream *session_data = (HTTP2Stream *)user_data;
+  HTTP2Client *session_data = (HTTP2Client *)user_data;
 
   if (session_data->stream_id == stream_id) {
     std::cout << "Stream " << stream_id
@@ -111,7 +111,7 @@ static int on_data_chunk_recv_callback(nghttp2_session *session _U_,
                                        const uint8_t *data, size_t len,
                                        void *user_data) {
   // std::cout << "receive datachunk " << std::endl;
-  HTTP2Stream *session_data = (HTTP2Stream *)user_data;
+  HTTP2Client *session_data = (HTTP2Client *)user_data;
   if (session_data->stream_id == stream_id) {
     session_data->tmp.append_body((const char *)data, len);
   }
@@ -142,7 +142,7 @@ void print_headers(nghttp2_nv *nva, size_t nvalen) {
   }
 }
 
-HTTP2Stream::HTTP2Stream() {
+HTTP2Client::HTTP2Client() {
   response = http::ResponseBuilder(tmp);
   nghttp2_session_callbacks *callbacks;
 
@@ -171,7 +171,7 @@ HTTP2Stream::HTTP2Stream() {
   nghttp2_session_callbacks_del(callbacks);
 }
 
-void HTTP2Stream::processResponse() {
+void HTTP2Client::processResponse() {
   responseParsed = true;
   if (!tmp.has_header(std::string("Content-Length"))) {
     size_t body_length = tmp.body().size();
@@ -185,13 +185,13 @@ void HTTP2Stream::processResponse() {
     response.to_string();
 }
 
-nghttp2_nv HTTP2Stream::make_nv(const std::string &name,
+nghttp2_nv HTTP2Client::make_nv(const std::string &name,
                                 const std::string &value) {
   return {(uint8_t *)name.c_str(), (uint8_t *)value.c_str(), name.size(),
           value.size(), NGHTTP2_NV_FLAG_NONE};
 }
 
-void HTTP2Stream::submit_client_connection_setting() {
+void HTTP2Client::submit_client_connection_setting() {
   nghttp2_settings_entry iv[3] = {
       {NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, 100},
       {NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE, NGHTTP2_INITIAL_WINDOW_SIZE},
@@ -207,7 +207,7 @@ void HTTP2Stream::submit_client_connection_setting() {
   }
 }
 
-void HTTP2Stream::submit_client_request() {
+void HTTP2Client::submit_client_request() {
   http::Message::Headers headers = request.headers();
   size_t hdr_sz = 3 + headers.size();
   std::vector<nghttp2_nv> nva = std::vector<nghttp2_nv>();
@@ -248,7 +248,7 @@ void HTTP2Stream::submit_client_request() {
   }
 }
 
-std::string HTTP2Stream::getQueuedFrame() {
+std::string HTTP2Client::getQueuedFrame() {
   std::string frame;
   ssize_t sent = 0;
   const uint8_t *bufp;
@@ -266,7 +266,7 @@ std::string HTTP2Stream::getQueuedFrame() {
   return frame;
 }
 
-std::string HTTP2Stream::sendHTTP1Request(const char *buf, size_t size) {
+std::string HTTP2Client::sendHTTP1Request(const char *buf, size_t size) {
   std::string frame;
   char *data = (char *)buf;
   while (size > 0) {
@@ -309,6 +309,6 @@ std::string HTTP2Stream::sendHTTP1Request(const char *buf, size_t size) {
   return frame;
 }
 
-ssize_t HTTP2Stream::parseHTTP2Response(const uint8_t *in, size_t len) {
+ssize_t HTTP2Client::parseHTTP2Response(const uint8_t *in, size_t len) {
   return nghttp2_session_mem_recv(session, in, len);
 }
