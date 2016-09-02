@@ -16,6 +16,7 @@ Channel pc_to_ps("pc_to_ps");
 Channel mb_to_client("mb_to_client");
 Channel client_to_mb("client_to_mb");
 
+typedef std::map<int, ProxyClient*> PacketsClientPair;
 int main() {
 #ifndef IN_LINUX
   Timer::Connection timer;
@@ -43,15 +44,16 @@ int main() {
   // mb_to_client.initialize_queue((char *)"mb_to_client");
   struct TLSPacket *pkt = (struct TLSPacket *)malloc(sizeof(struct TLSPacket));
   struct Plaintext *msg = (struct Plaintext *)malloc(sizeof(struct Plaintext));
-  ProxyClient **pcs = (ProxyClient **)malloc(MAXCONNS * sizeof(ProxyClient *));
-  for (int i = 0; i < MAXCONNS; i++) {
-    // pcs[i] = new (Genode::env()->heap())
-    //     ProxyClient(NULL, i, &down, &pc_to_ps, &client_to_mb, pkt, msg);
-    pcs[i] =
-        new ProxyClient(NULL, i, &down, &pc_to_ps, &client_to_mb, pkt, msg);
-  }
+  // TODO in_pkt and out_pkt
+  PacketsClientPair pcs;
+  // ProxyClient **pcs = (ProxyClient **)malloc(MAXCONNS * sizeof(ProxyClient *));
+  // for (int i = 0; i < MAXCONNS; i++) {
+  //   // pcs[i] = new (Genode::env()->heap())
+  //   //     ProxyClient(NULL, i, &down, &pc_to_ps, &client_to_mb, pkt, msg);
+  //   pcs[i] =
+  //       new ProxyClient(NULL, i, &down, &pc_to_ps, &client_to_mb, pkt, msg);
+  // }
 
-  // TODO keep a map between packet id and pc id.
   printf("proxy client is running\n");
 #ifdef MEASURE_TIME
   int i = 0;
@@ -88,8 +90,24 @@ int main() {
       // distribute the message:
       // printf("%d receive from ps\n", msg->id);
       enum TextType tp = msg->type;
-      ProxyClient *pc = pcs[msg->id];
+      ProxyClient* pc = (ProxyClient *) 0;
       if (tp == SNI) {
+        // when receive the SNI, that means a new connection, can we reuse the existing TLS connection?
+        std::string domainname = std::string(msg->buffer);
+        bool reuse = false;
+        for (PacketsClientPair::const_iterator it = pcs.begin(); it != pcs.end(); it ++) {
+          pc = it->second;
+          if (pc->http2_selected && pc->domain == domainname) {
+            // found an existing TLS connection.
+            reuse = true;
+            break;
+          }
+        }
+        if (!reuse) {
+          pcs[msg->id] =
+            new ProxyClient(NULL, msg->id, &down, &pc_to_ps, &client_to_mb, pkt, msg);
+          pc = pcs[msg->id];
+        }
         pc->receiveSNI(msg->buffer);
       } else {
         fprintf(stderr, "wrong type\n");
@@ -102,7 +120,7 @@ int main() {
       enum TextType tp = msg->type;
       ProxyClient *pc = pcs[msg->id];
       if (tp == HTTP) {
-        pc->receiveRecord(msg->buffer, msg->size);
+        pc->receiveRecord(msg->id, msg->buffer, msg->size);
       } else if (tp == CLOSE) {
         // printf("%d receive close from mb\n", msg->id);
         pc->receiveCloseAlert();

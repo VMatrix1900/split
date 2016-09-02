@@ -9,14 +9,15 @@ class ProxyClient : public ProxyBase {
   unsigned long end_handshake;
 #endif
   void sendCrt();
-  HTTP2Client stream_data;
+  HTTP2Client http2_client;
 
  public:
   bool http2_selected;
+  std::string domain;
   void receivePacket(const char *packetbuffer, int length);
   void receiveSNI(char *SNIbuffer);
   void forwardRecordForHTTP2();
-  void receiveRecord(const char *recordbuffer, int length);
+  void receiveRecord(int id, const char *recordbuffer, int length);
   ProxyClient(struct cert_ctx *ctx, int id, Channel *down, Channel *otherside,
               Channel *to_mb, struct TLSPacket *pkt, struct Plaintext *msg);
   ~ProxyClient() {  // TODO reconsider the delete

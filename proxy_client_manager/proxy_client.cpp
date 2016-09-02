@@ -51,6 +51,7 @@ void ProxyClient::receiveSNI(char *SNIbuffer) {
 // printf("[%d]::begin[%lu]\n", id, begin_handshake / 1000000);
 #endif
   if (strlen(SNIbuffer) != 0) {
+    domain = std::string(SNIbuffer);
     SSL_set_tlsext_host_name(ssl, SNIbuffer);
   }
   // fprintf(stderr, "[%d] receive sni buffer: %s\n", id, SNIbuffer);
@@ -132,24 +133,24 @@ void ProxyClient::forwardRecordForHTTP2() {
   //   j = 0;
   // }
   std::clog << "Send to http2 parser: " << size << std::endl;
-  ssize_t rv = stream_data.parseHTTP2Response((const uint8_t *)buf, size);
+  ssize_t rv = http2_client.parseHTTP2Response((const uint8_t *)buf, size);
   if (rv < 0) {
     std::cerr << "nghttp2 session mem recv wrong:  " << rv << std::endl;
     exit(-1);
   }
   std::clog << "http2 parser parsed: " << rv << std::endl;
-  if (stream_data.responseParsed) {
+  if (http2_client.responseParsed) {
     std::clog << "http2 response parsed" << std::endl;
-    std::string msg = stream_data.response.to_string() + stream_data.tmp.body();
+    std::string msg = http2_client.response.to_string() + http2_client.tmp.body();
     sendRecord((char *)msg.c_str(), msg.size());
     std::clog << "record sent: " << msg.size() << std::endl;
   }
   // TODO check queue stream
 }
 
-void ProxyClient::receiveRecord(const char *recordbuffer, int length) {
+void ProxyClient::receiveRecord(int pkt_id, const char *recordbuffer, int length) {
   if (http2_selected) {
-    std::string frame = stream_data.sendHTTP1Request(recordbuffer, length);
+    std::string frame = http2_client.sendHTTP1Request(recordbuffer, length);
     ProxyBase::receiveRecord(frame.c_str(), frame.size());
   } else {
     ProxyBase::receiveRecord(recordbuffer, length);
