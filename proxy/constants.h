@@ -1,1 +1,0 @@
-#define MAXCONNS 65536

@@ -6,8 +6,8 @@
 #endif
 #include "ssl.h"
 
-Channel up("up_client");
-Channel down("down_client");
+Channel up("up_server");
+Channel down("down_server");
 Channel ps_to_pc("ps_to_pc");
 Channel pc_to_ps("pc_to_ps");
 Channel mb_to_server("mb_to_server");

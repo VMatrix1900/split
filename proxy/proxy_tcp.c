@@ -11,7 +11,7 @@ int find_next_slot(struct proxy_ctx *ctx)
     ctx->counts = (ctx->counts + 1) % MAXCONNS;
     if (!ctx->conns[i]) {
       return i;
-    } else if (ctx->conns[i]->closed) {
+    } else if (ctx->conns[i]->cli_closed || ctx->conns[i]->serv_closed) {
       pxy_conn_free(ctx->conns[i]);
       return i;
     }
@@ -22,9 +22,10 @@ int find_next_slot(struct proxy_ctx *ctx)
 
 struct pxy_conn *pxy_conn_new(struct proxy_ctx *ctx)
 {
-  struct pxy_conn *conn = malloc(sizeof(struct pxy_conn));
+  struct pxy_conn *conn = (struct pxy_conn*)malloc(sizeof(struct pxy_conn));
   // setup the proxy struct;
-  conn->closed = 0;
+  conn->serv_closed = false;
+  conn->cli_closed = false;
   conn->cli_bev = NULL;
   conn->serv_bev = NULL;
   conn->index = find_next_slot(ctx);
@@ -32,7 +33,6 @@ struct pxy_conn *pxy_conn_new(struct proxy_ctx *ctx)
     printf("pxy conn is full!\n");
     exit(-1);
   }
-  conn->timer = ctx->timer;
   conn->parent = ctx;
   ctx->conns[conn->index] = conn;
   return conn;
@@ -42,11 +42,13 @@ void pxy_conn_free(struct pxy_conn *ctx)
 {
   if (ctx->cli_bev) {
     bufferevent_free(ctx->cli_bev);
+    ctx->cli_bev = NULL;
   }
   if (ctx->serv_bev) {
     bufferevent_free(ctx->serv_bev);
+    ctx->serv_bev = NULL;
   }
-  free(ctx);
+  printf("free %d\n", ctx->index);
 }
 
 struct proxy_ctx *proxy_ctx_new()
