@@ -142,6 +142,22 @@ class ProxyBase {
     // otherside->print_headers();
   }
 
+  void sendRecordWithId(int id, char *msgbuffer, int length) {
+    msg->type = HTTP;
+    Channel *sendto = to_mb;
+    while (length > 0) {
+      msg->size = (length <= MAX_MSG_SIZE) ? length : MAX_MSG_SIZE;
+      memcpy(msg->buffer, msgbuffer, length);
+      while (sendto->put_data((void *)msg,
+                              msg->size + offsetof(struct Plaintext, buffer)) ==
+             0) {
+        ;
+      }
+      length -= msg->size;
+      msgbuffer += msg->size;
+    }
+  }
+
   void sendRecord(char *recordbuffer, int length) {
     sendMessage(HTTP, recordbuffer, length);
   }

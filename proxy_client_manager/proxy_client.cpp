@@ -3,7 +3,8 @@
 ProxyClient::ProxyClient(struct cert_ctx *ctx, int id, Channel *down,
                          Channel *otherside, Channel *to_mb,
                          struct TLSPacket *pkt, struct Plaintext *msg)
-    : ProxyBase(ctx, id, down, otherside, to_mb, pkt, msg) {
+    : ProxyBase(ctx, id, down, otherside, to_mb, pkt, msg)
+{
   const SSL_METHOD *meth = TLSv1_2_method();
   SSL_CTX *sslctx = SSL_CTX_new(meth);
   // now we ban begin initialize the client side.
@@ -45,7 +46,8 @@ ProxyClient::ProxyClient(struct cert_ctx *ctx, int id, Channel *down,
   out_bio = SSL_get_wbio(ssl);
 }
 
-void ProxyClient::receiveSNI(char *SNIbuffer) {
+void ProxyClient::receiveSNI(char *SNIbuffer)
+{
 #ifdef MEASURE_TIME
   begin_handshake = Genode::Trace::timestamp();
 // printf("[%d]::begin[%lu]\n", id, begin_handshake / 1000000);
@@ -59,13 +61,15 @@ void ProxyClient::receiveSNI(char *SNIbuffer) {
   sendPacket();
 }
 
-void ProxyClient::sendCrt() {
+void ProxyClient::sendCrt()
+{
   char *cert = store_cert(SSL_get_peer_certificate(ssl));
   sendMessage(CRT, cert, strlen(cert) + 1);
   free(cert);
 }
 
-void ProxyClient::forwardRecordForHTTP2() {
+void ProxyClient::forwardRecordForHTTP2()
+{
   char buf[MAX_MSG_SIZE] = {'0'};
   char *write_head = buf;
   int size = 0;
@@ -138,26 +142,24 @@ void ProxyClient::forwardRecordForHTTP2() {
     std::cerr << "nghttp2 session mem recv wrong:  " << rv << std::endl;
     exit(-1);
   }
-  std::clog << "http2 parser parsed: " << rv << std::endl;
-  if (http2_client.responseParsed) {
-    std::clog << "http2 response parsed" << std::endl;
-    std::string msg = http2_client.response.to_string() + http2_client.tmp.body();
-    sendRecord((char *)msg.c_str(), msg.size());
-    std::clog << "record sent: " << msg.size() << std::endl;
-  }
   // TODO check queue stream
 }
 
-void ProxyClient::receiveRecord(int pkt_id, const char *recordbuffer, int length) {
+void ProxyClient::receiveRecord(int pkt_id, const char *recordbuffer,
+                                int length)
+{
   if (http2_selected) {
-    std::string frame = http2_client.sendHTTP1Request(recordbuffer, length);
+    std::string frame =
+        http2_client.sendHTTP1Request(pkt_id, recordbuffer, length);
+    // TODO what if frame is empty?
     ProxyBase::receiveRecord(frame.c_str(), frame.size());
   } else {
     ProxyBase::receiveRecord(recordbuffer, length);
   }
 }
 
-void ProxyClient::receivePacket(const char *packetbuffer, int length) {
+void ProxyClient::receivePacket(const char *packetbuffer, int length)
+{
   char *tmp = (char *)packetbuffer;
   while (length > 0) {
     int written = BIO_write(in_bio, tmp, length);
@@ -189,6 +191,7 @@ void ProxyClient::receivePacket(const char *packetbuffer, int length) {
       //        SSL_get_cipher(ssl));
       handshake_done = true;
       if (!first_msg_buf.empty()) {
+        // TODO receive record fake id
         receiveRecord(first_msg_buf.c_str(), first_msg_buf.length());
       }
 #ifdef MEASURE_TIME
