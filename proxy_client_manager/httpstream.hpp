@@ -9,5 +9,6 @@ public:
   http::ResponseBuilder response;
 
   HTTPStream(int id) : pkt_id(id) {
+    response = http::ResponseBuilder(tmp);
   }
 };

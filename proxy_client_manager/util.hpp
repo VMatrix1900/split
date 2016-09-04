@@ -1,3 +1,4 @@
+#pragma once
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -8,6 +9,15 @@
 namespace {
   const char LOWER_XDIGITS[] = "0123456789abcdef";
 } // namespace
+
+namespace {
+  nghttp2_nv make_nv(const std::string &name,
+                                  const std::string &value)
+  {
+    return {(uint8_t *)name.c_str(), (uint8_t *)value.c_str(), name.size(),
+        value.size(), NGHTTP2_NV_FLAG_NONE};
+  }
+}
 
 namespace util {
   std::string ascii_dump(const uint8_t *data, size_t len) {
