@@ -16,14 +16,13 @@ class ProxyClient : public ProxyBase {
   std::string sendHTTP1Request(int packet_id, const char *buf, size_t len);
   ssize_t parseHTTP2Response(const uint8_t *in, size_t len);
   // void set_send_callback(send_data_callback send_data);
-  std::string getQueuedFrame();
 
  public:
   bool http2_selected;
   std::string domain;
   nghttp2_session *session;
-  std::map<int32_t, HTTPStream*> stream_id_to_stream;
-  std::map<int, HTTPStream*> pkt_id_to_stream;
+  std::map<int32_t, HTTPStream *> stream_id_to_stream;
+  std::map<int, HTTPStream *> pkt_id_to_stream;
 
   ProxyClient(struct cert_ctx *ctx, int id, Channel *down, Channel *otherside,
               Channel *to_mb, struct TLSPacket *pkt, struct Plaintext *msg);
@@ -35,6 +34,7 @@ class ProxyClient : public ProxyBase {
   void receivePacket(const char *packetbuffer, int length);
   void receiveSNI(char *SNIbuffer);
   void forwardRecordForHTTP2();
+  using ProxyBase::receiveRecord;
   void receiveRecord(int id, const char *recordbuffer, int length);
   void processResponse(int id);
   void submit_client_connection_setting();

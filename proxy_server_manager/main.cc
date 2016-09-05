@@ -39,8 +39,10 @@ int main() {
   struct Plaintext *msg = (struct Plaintext *)malloc(sizeof(struct Plaintext));
   ProxyServer **pss = (ProxyServer **)malloc(MAXCONNS * sizeof(ProxyServer *));
   for (int i = 0; i < MAXCONNS; i++) {
-    // pss[i] = new (Genode::env()->heap()) ProxyServer(ctx, i, &down, &ps_to_pc, &server_to_mb, pkt, msg, &cert_cache);
-    pss[i] = new ProxyServer(ctx, i, &down, &ps_to_pc, &server_to_mb, pkt, msg, &cert_cache);
+    // pss[i] = new (Genode::env()->heap()) ProxyServer(ctx, i, &down,
+    // &ps_to_pc, &server_to_mb, pkt, msg, &cert_cache);
+    pss[i] = new ProxyServer(ctx, i, &down, &ps_to_pc, &server_to_mb, pkt, msg,
+                             &cert_cache);
   }
 
   printf("proxy server is running\n");
@@ -49,7 +51,9 @@ int main() {
     if (up.pull_data((void *)pkt, sizeof(struct TLSPacket)) > 0) {
       ProxyServer *ps = pss[pkt->id];
       if (pkt->size < 0) {
-        // printf("%d receive %d from lb\n", pkt->id, pkt->size);
+#ifdef DEBUG
+        printf("%d receive %d from lb\n", pkt->id, pkt->size);
+#endif
         ps->sendCloseAlertToOther();
       } else {
         ps->receivePacket(pkt->buffer, pkt->size);
@@ -57,8 +61,10 @@ int main() {
       newdata = true;
     }
     if (pc_to_ps.pull_data((void *)msg, sizeof(struct Plaintext)) > 0) {
-      // distribute the message:
-      // printf("%d receive %d from pc\n", msg->id, msg->size);
+// distribute the message:
+#ifdef DEBUG
+      printf("%d receive %d from pc\n", msg->id, msg->size);
+#endif
       enum TextType tp = msg->type;
       ProxyServer *ps = pss[msg->id];
       if (tp == CRT) {
@@ -68,14 +74,18 @@ int main() {
       }
     }  // pc_to_ps.print_headers();
     if (mb_to_server.pull_data((void *)msg, sizeof(struct Plaintext)) > 0) {
-      // distribute the message:
-      // printf("%d receive %d from mb\n", msg->id, msg->size);
+// distribute the message:
+#ifdef DEBUG
+      printf("%d receive %d from mb\n", msg->id, msg->size);
+#endif
       enum TextType tp = msg->type;
       ProxyServer *ps = pss[msg->id];
       if (tp == HTTP) {
         ps->receiveRecord(msg->buffer, msg->size);
-      } else if (tp == CLOSE){
-        // printf("%d receive close from mb\n", msg->id);
+      } else if (tp == CLOSE) {
+#ifdef DEBUG
+        printf("%d receive close from mb\n", msg->id);
+#endif
         ps->receiveCloseAlert();
       } else {
         fprintf(stderr, "wrong type\n");

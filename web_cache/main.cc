@@ -36,9 +36,14 @@ int main() {
       newdata = true;
       cache_mb->GetParser(client_msg->id);
       if (client_msg->type == CLOSE) {
-        // std::cerr << "receive close from client" << client_msg->id;
+#ifdef DEBUG
+        std::clog << "receive close from client" << client_msg->id;
+#endif
         cache_mb->SendCloseAlert(Secure_box::server, client_msg->id);
       } else {
+#ifdef DEBUG
+        printf("%d receive %d from client\n", client_msg->id, client_msg->size);
+#endif
         cache_mb->ParseHTTPResponse(client_msg->id, client_msg->buffer,
                                     client_msg->size);
       }
@@ -48,9 +53,14 @@ int main() {
       newdata = true;
       cache_mb->GetParser(server_msg->id);
       if (server_msg->type == CLOSE) {
-        // std::cerr << "receive close from server" << server_msg->id;
+#ifdef DEBUG
+        std::clog << "receive close from server" << server_msg->id;
+#endif
         cache_mb->SendCloseAlert(Secure_box::client, server_msg->id);
       } else {
+#ifdef DEBUG
+        printf("%d receive %d from server\n", server_msg->id, server_msg->size);
+#endif
         cache_mb->ParseHTTPRequest(server_msg->id, server_msg->buffer,
                                    server_msg->size);
       }

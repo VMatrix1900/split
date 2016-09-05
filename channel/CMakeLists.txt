@@ -10,6 +10,8 @@ if (Boost_FOUND)
   target_link_libraries(channel ${Boost_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} rt)
   # target_link_libraries(send channel)
   # target_link_libraries(recv channel)
+  add_executable(clean_boost boost_clean.cpp)
+  target_link_libraries(clean_boost channel)
   target_include_directories(channel PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 

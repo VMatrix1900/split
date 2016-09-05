@@ -1,8 +1,9 @@
 cmake_minimum_required (VERSION 3.0)
 project (proxy)
 
-set( CMAKE_EXPORT_COMPILE_COMMANDS 1 )
-add_definitions(-DIN_LINUX)
+set(CMAKE_BUILD_TYPE DEBUG)
+set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
+add_definitions(-DIN_LINUX -DDEBUG)
 add_subdirectory(channel)
 add_subdirectory(proxy)
 add_subdirectory(proxy_base)

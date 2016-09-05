@@ -159,6 +159,9 @@ class ProxyBase {
   }
 
   void sendRecord(char *recordbuffer, int length) {
+#ifdef DEBUG
+    std::clog << "send record size: " << length << std::endl;
+#endif
     sendMessage(HTTP, recordbuffer, length);
   }
 
@@ -186,9 +189,9 @@ class ProxyBase {
       first_msg_buf += std::string(recordbuffer, length);
       return;
     }
-    #ifdef MEASURE_TIME
+#ifdef MEASURE_TIME
     t1 = Genode::Trace::timestamp();
-    #endif
+#endif
     int r = SSL_write(ssl, recordbuffer, length);
     // printf("dig into receive record\n");
     // t2 = Genode::Trace::timestamp();
@@ -237,7 +240,7 @@ class ProxyBase {
         pkt(pkt),
         msg(msg),
         first_msg_buf("") {
-    #ifdef MEASURE_TIME
+#ifdef MEASURE_TIME
     t1 = 0;
     t2 = 0;
     t3 = 0;
@@ -249,7 +252,7 @@ class ProxyBase {
     record_speed = 0;
     t1 = Genode::Trace::timestamp();
     overhead = Genode::Trace::timestamp() - t1;  // time measuring overhead
-    #endif
+#endif
   };
   ~ProxyBase() {
     if (0 == SSL_get_shutdown(ssl)) {

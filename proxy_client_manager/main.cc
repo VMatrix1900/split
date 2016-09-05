@@ -16,7 +16,7 @@ Channel pc_to_ps("pc_to_ps");
 Channel mb_to_client("mb_to_client");
 Channel client_to_mb("client_to_mb");
 
-typedef std::map<int, ProxyClient*> PacketsClientPair;
+typedef std::map<int, ProxyClient *> PacketsClientPair;
 int main() {
 #ifndef IN_LINUX
   Timer::Connection timer;
@@ -46,7 +46,8 @@ int main() {
   struct Plaintext *msg = (struct Plaintext *)malloc(sizeof(struct Plaintext));
   // TODO in_pkt and out_pkt
   PacketsClientPair pcs;
-  // ProxyClient **pcs = (ProxyClient **)malloc(MAXCONNS * sizeof(ProxyClient *));
+  // ProxyClient **pcs = (ProxyClient **)malloc(MAXCONNS * sizeof(ProxyClient
+  // *));
   // for (int i = 0; i < MAXCONNS; i++) {
   //   // pcs[i] = new (Genode::env()->heap())
   //   //     ProxyClient(NULL, i, &down, &pc_to_ps, &client_to_mb, pkt, msg);
@@ -67,12 +68,16 @@ int main() {
       t1 = Genode::Trace::timestamp();
 #endif
       ProxyClient *pc = pcs[pkt->id];
-      // printf("%d receive %d from lb\n", pkt->id, pkt->size);
       // up.print_headers();
       if (pkt->size < 0) {
-        // printf("%d receive %d from lb\n", pkt->id, pkt->size);
+#ifdef DEBUG
+        printf("%d receive close from lb\n", pkt->id);
+#endif
         pc->sendCloseAlertToOther();
       } else {
+#ifdef DEBUG
+        printf("%d receive %d from lb\n", pkt->id, pkt->size);
+#endif
         pc->receivePacket(pkt->buffer, pkt->size);
       }
       // t2 = Genode::Trace::timestamp();
@@ -87,42 +92,55 @@ int main() {
       // }
     }
     if (ps_to_pc.pull_data((char *)msg, sizeof(struct Plaintext)) > 0) {
-      // distribute the message:
-      // printf("%d receive from ps\n", msg->id);
+// distribute the message:
+#ifdef DEBUG
+      printf("%d receive from ps\n", msg->id);
+#endif
       enum TextType tp = msg->type;
-      ProxyClient* pc = (ProxyClient *) 0;
+      ProxyClient *pc = (ProxyClient *)0;
       if (tp == SNI) {
-        // when receive the SNI, that means a new connection, can we reuse the existing TLS connection?
+        // when receive the SNI, that means a new connection, can we reuse the
+        // existing TLS connection?
         std::string domainname = std::string(msg->buffer);
+#ifdef DEBUG
+        std::clog << domainname << std::endl;
+#endif
         bool reuse = false;
-        for (PacketsClientPair::const_iterator it = pcs.begin(); it != pcs.end(); it ++) {
+        for (PacketsClientPair::const_iterator it = pcs.begin();
+             it != pcs.end(); it++) {
           pc = it->second;
           if (pc->http2_selected && pc->domain == domainname) {
-            // found an existing TLS connection.
+            std::clog << "found an existing TLS connection." << std::endl;
             reuse = true;
             break;
           }
         }
         if (!reuse) {
-          pcs[msg->id] =
-            new ProxyClient(NULL, msg->id, &down, &pc_to_ps, &client_to_mb, pkt, msg);
+          pcs[msg->id] = new ProxyClient(NULL, msg->id, &down, &pc_to_ps,
+                                         &client_to_mb, pkt, msg);
           pc = pcs[msg->id];
+          pc->receiveSNI(msg->buffer);
+        } else {
+          pcs[msg->id] = pc;
         }
-        pc->receiveSNI(msg->buffer);
       } else {
         fprintf(stderr, "wrong type\n");
       }
     }
     if (mb_to_client.pull_data((char *)msg, sizeof(struct Plaintext)) > 0) {
-      // distribute the message:
-      // printf("%d receive from mb\n", msg->id);
+// distribute the message:
+#ifdef DEBUG
+      printf("%d receive %d from mb\n", msg->id, msg->size);
+#endif
       // std::cerr << std::string(msg->buffer, msg->size);
       enum TextType tp = msg->type;
       ProxyClient *pc = pcs[msg->id];
       if (tp == HTTP) {
         pc->receiveRecord(msg->id, msg->buffer, msg->size);
       } else if (tp == CLOSE) {
-        // printf("%d receive close from mb\n", msg->id);
+#ifdef DEBUG
+        printf("%d receive close from mb\n", msg->id);
+#endif
         pc->receiveCloseAlert();
       } else {
         fprintf(stderr, "wrong type\n");

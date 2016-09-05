@@ -30,6 +30,7 @@ void Secure_box::Web_cache::SendRecord(std::string text, enum packet_type side,
                                        int id) {
   struct Plaintext *msg = (struct Plaintext *)malloc(sizeof(struct Plaintext));
   int length = text.length();
+  int size = length;
   const char *buf = text.c_str();
   Channel *dst = (side == client) ? to_client : to_server;
   msg->type = HTTP;
@@ -47,6 +48,9 @@ void Secure_box::Web_cache::SendRecord(std::string text, enum packet_type side,
     //        (side == client) ? "client" : "server");
   }
   free(msg);
+#ifdef DEBUG
+  std::clog << "ID[" << id << "] send request. size: " << size << std::endl;
+#endif
 }
 
 void Secure_box::Web_cache::SendCloseAlert(enum packet_type side, int id) {

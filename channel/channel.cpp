@@ -9,8 +9,11 @@ Channel::~Channel() {
 // may block
 int Channel::put_data(void *data_ptr, std::size_t size) {
   try{
-    mq.send(data_ptr, size, 0);
-    return size;
+    if (mq.try_send(data_ptr, size, 0)) {
+      return size;
+    } else {
+      return -1;
+    }
   } catch(boost::interprocess::interprocess_exception &ex) {
     std::cerr << ex.what() << std::endl;
     return -1;
@@ -24,8 +27,11 @@ int Channel::pull_data(void *data_ptr, std::size_t size) {
   boost::interprocess::message_queue::size_type recevdsize;
   unsigned int prio;
   try{
-    mq.receive(data_ptr, size, recevdsize, prio);
-    return recevdsize;
+    if (mq.try_receive(data_ptr, 35000, recevdsize, prio)) {
+      return recevdsize;
+    } else {
+      return -1;
+    }
   } catch(boost::interprocess::interprocess_exception &ex) {
     std::cerr << ex.what() << std::endl;
     return -1;

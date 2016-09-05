@@ -21,6 +21,8 @@ Channel SSL_to_TCP("ssl_to_tcp");
 struct timeval usec = {0, 1};
 struct timeval msec = {0, 600};
 
+void log(std::string txt) { std::clog << txt << std::endl; }
+
 int timecount = 0;
 int nat_netfilter_lookup(struct sockaddr *dst_addr, socklen_t *dst_addrlen,
                          evutil_socket_t s, struct sockaddr *src_addr,
@@ -46,9 +48,9 @@ void cleanconn(evutil_socket_t fd, short what, void *ptr) {
   struct proxy_ctx *ctx = (struct proxy_ctx *)ptr;
   event_del(ctx->cleantimer);
   int i;
-  for (i = 0; i < MAXCONNS; i ++) {
-    if(ctx->conns[i] && (ctx->conns[i]->cli_closed || ctx->conns[i]->serv_closed)) {
-
+  for (i = 0; i < MAXCONNS; i++) {
+    if (ctx->conns[i] &&
+        (ctx->conns[i]->cli_closed || ctx->conns[i]->serv_closed)) {
       pxy_conn_free(ctx->conns[i]);
     }
   }
@@ -63,49 +65,49 @@ void copydata(evutil_socket_t fd, short what, void *ptr) {
   evtimer_del(ctx->timer);
   /* timecount ++; */
   /* if (timecount == 1000) { */
-  /*   printf("enter copydata\n"); */
+  // printf("enter copydata\n");
 
   /*   timecount = 0; */
   /* } */
   struct TLSPacket pi;
   while (SSL_to_TCP.pull_data(&pi, 35000) > 0) {
-      msg = true;
-      /* printf("Get [%d] %d from Genode\n", pi.id, pi.side); */
-      /* printf("get from genode\n"); */
-      conn = ctx->conns[pi.id];
-      // send to client side or server side.
-      if (pi.side == server && !conn->serv_closed) {
-        bev = conn->serv_bev;
-      } else if (pi.side == client && !conn->cli_closed) {
-        bev = conn->cli_bev;
-      } else if (pi.side == close_server) {
-        /* printf("[%d]: clean server\n", pi.id); */
-        if (conn->serv_bev) {
-          bufferevent_free(conn->serv_bev);
-          conn->serv_bev = NULL;
-        }
-        conn->serv_closed = true;
-        /* event_add(ctx->cleantimer, &msec); */
-        continue;
-      } else if (pi.side == close_client) {
-        /* printf("[%d]: clean client\n", pi.id); */
-        if (conn->cli_bev) {
-          bufferevent_free(conn->cli_bev);
-          conn->cli_bev = NULL;
-        }
-        conn->cli_closed = true;
-        /* event_add(ctx->cleantimer, &msec); */
-        continue;
-      } else {
-        /* printf("closed connection\n"); */
-        continue;
+    msg = true;
+    printf("Get [%d] %d from Genode\n", pi.id, pi.side);
+    /* printf("get from genode\n"); */
+    conn = ctx->conns[pi.id];
+    // send to client side or server side.
+    if (pi.side == server && !conn->serv_closed) {
+      bev = conn->serv_bev;
+    } else if (pi.side == client && !conn->cli_closed) {
+      bev = conn->cli_bev;
+    } else if (pi.side == close_server) {
+      /* printf("[%d]: clean server\n", pi.id); */
+      if (conn->serv_bev) {
+        bufferevent_free(conn->serv_bev);
+        conn->serv_bev = NULL;
       }
-      int written = bufferevent_write(bev, pi.buffer, pi.size);
-      if (written != 0) {
-        /* printf("bufferevent write wrong\n"); */
-      } else {
-        /* printf("write correct\n"); */
+      conn->serv_closed = true;
+      /* event_add(ctx->cleantimer, &msec); */
+      continue;
+    } else if (pi.side == close_client) {
+      /* printf("[%d]: clean client\n", pi.id); */
+      if (conn->cli_bev) {
+        bufferevent_free(conn->cli_bev);
+        conn->cli_bev = NULL;
       }
+      conn->cli_closed = true;
+      /* event_add(ctx->cleantimer, &msec); */
+      continue;
+    } else {
+      /* printf("closed connection\n"); */
+      continue;
+    }
+    int written = bufferevent_write(bev, pi.buffer, pi.size);
+    if (written != 0) {
+      /* printf("bufferevent write wrong\n"); */
+    } else {
+      /* printf("write correct\n"); */
+    }
   }
   int r = evtimer_add(ctx->timer, &usec);
   if (r == -1) {
@@ -120,10 +122,15 @@ void sendCloseToGenode(int id, enum packet_type side) {
   struct TLSPacket pi;
   pi.id = id;
   pi.side = side;
-  pi.size = 10; 
-  while (TCP_to_SSL.put_data(&pi, pi.size + offsetof(struct TLSPacket, buffer))) {
-      ;
-    }
+  pi.size = 10;
+  while (TCP_to_SSL.put_data(
+             &pi, pi.size + offsetof(struct TLSPacket, buffer)) < 0) {
+    ;
+  }
+  std::string sidetxt = (side == close_client) ? "close_client" : "close_server";
+  std::clog << "ID[" << pi.id << "] "
+            << "Forward " << sidetxt << " to SSL."
+            << "Size[" << pi.size << "]" << std::endl;
 }
 
 void readcb(struct bufferevent *bev, void *ptr, enum packet_type side) {
@@ -139,17 +146,25 @@ void readcb(struct bufferevent *bev, void *ptr, enum packet_type side) {
   /* char buffer[10000] = {'0'}; */
   /* memcpy(buffer, *write, pi.size); */
   if (pi.size > 0) {
-    while (TCP_to_SSL.put_data(&pi, pi.size + offsetof(struct TLSPacket, buffer))) {
+    while (TCP_to_SSL.put_data(
+               &pi, pi.size + offsetof(struct TLSPacket, buffer)) < 0) {
       ;
     }
+    std::string sidetxt = (side == server) ? "server" : "client";
+    std::clog << "ID[" << pi.id << "] "
+              << "Forward " << sidetxt << " to SSL."
+              << "Size[" << pi.size << "]" << std::endl;
+  } else {
   }
 }
 
 void cli_readcb(struct bufferevent *bev, void *ptr) {
+  log("cli read");
   readcb(bev, ptr, client);
 }
 
 void serv_readcb(struct bufferevent *bev, void *ptr) {
+  log("serv read");
   readcb(bev, ptr, server);
 }
 
@@ -186,7 +201,7 @@ void eventcb(struct bufferevent *bev, short events, void *ptr) {
 void accept_conn_cb(struct evconnlistener *listener, evutil_socket_t fd,
                     struct sockaddr *peeraddr, int peeraddrlen, void *ptr) {
   struct proxy_ctx *ctx = (struct proxy_ctx *)ptr;
-  /* printf("connection captured, begin init proxy\n"); */
+  printf("connection captured, begin init proxy\n");
   struct pxy_conn *conn = pxy_conn_new(ctx);
 
   /* get the real socket. using the nat table. */
