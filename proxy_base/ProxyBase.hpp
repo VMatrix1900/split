@@ -6,6 +6,7 @@
 #include "message.h"
 #include "proxy_ssl.h"
 #include "channel.hpp"
+#include "log.h"
 
 class ProxyBase {
  protected:

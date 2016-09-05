@@ -89,9 +89,12 @@ static int on_begin_frame_callback(nghttp2_session *session,
 static int on_stream_close_callback(nghttp2_session *session, int32_t stream_id,
                                     uint32_t error_code, void *user_data) {
   ProxyClient *session_data = (ProxyClient *)user_data;
+  HTTPStream *stream = session_data->stream_id_to_stream[stream_id];
 
-  // TODO clean the HTTPStream; when? conflict with the reponse send?
-  // if (session_data->stream_id == stream_id) {
+  session_data->pkt_id_to_stream.erase(stream->pkt_id);
+  session_data->stream_id_to_stream.erase(stream_id);
+  delete session_data->stream_id_to_stream[stream_id];
+
   std::cout << "Stream " << stream_id
             << " closed with error_code=" << error_code;
   // TODO when do we close the session.
@@ -125,10 +128,9 @@ static ssize_t body_read_callback(nghttp2_session *session _U_,
                                   size_t length, uint32_t *data_flags,
                                   nghttp2_data_source *source,
                                   void *user_data _U_) {
-  std::clog << "call body read calback" << std::endl;
+  log("call body read calback");
   http::BufferedRequest *request = (http::BufferedRequest *)source->ptr;
   const std::string &body = request->body();
-  std::clog << "request body is " << body << std::endl;
   ssize_t r = body.copy((char *)buf, length, request->copied);
   request->copied += r;
   if (r == 0) {
@@ -300,7 +302,7 @@ void ProxyClient::forwardRecordForHTTP2() {
   //   record_speed = 0;
   //   j = 0;
   // }
-  std::clog << "Send to http2 parser: " << size << std::endl;
+  log("Send to http2 parser: ",size);
   ssize_t rv = parseHTTP2Response((const uint8_t *)buf, size);
   if (rv < 0) {
     std::cerr << "nghttp2 session mem recv wrong:  " << rv << std::endl;
@@ -380,12 +382,11 @@ void ProxyClient::processResponse(int stream_id) {
   }
   response.set_minor_version(1);
   std::string msg = response.to_string() + tmp.body();
-  sendRecordWithId(stream_id_to_stream[stream_id]->pkt_id, (char *)msg.c_str(),
+  int msg_id = stream_id_to_stream[stream_id]->pkt_id;
+  sendRecordWithId(msg_id, (char *)msg.c_str(),
                    msg.size());
-#ifdef DEBUG
-  std::clog << "http2 response parsed" << std::endl;
-  std::clog << "record sent: " << msg.size() << std::endl;
-#endif
+  log("http2 response parsed");
+  log("record sent: ", msg_id, msg.size());
 }
 
 void ProxyClient::submit_client_connection_setting() {
@@ -428,10 +429,6 @@ void ProxyClient::submit_client_request(int pkt_id) {
     }
   }
 
-#ifdef DEBUG
-  std::clog << "Request body size is " << request.body().size() << std::endl;
-  std::clog << "Request body is " << request.body() << std::endl;
-#endif
   if (pkt_id_to_stream[pkt_id]->request.body().size() != 0) {
     nghttp2_data_provider data_pdr;
     data_pdr.source.ptr = &(pkt_id_to_stream[pkt_id]->request);
@@ -447,8 +444,7 @@ void ProxyClient::submit_client_request(int pkt_id) {
               << nghttp2_strerror(stream_id);
     // TODO destructor;
   } else {
-    std::clog << "ID[" << pkt_id << "] "
-              << "http request submitted." << std::endl;
+    log(pkt_id, "http request submitted.");
     stream_id_to_stream[stream_id] = pkt_id_to_stream[pkt_id];
   }
 }
@@ -478,8 +474,7 @@ std::string ProxyClient::sendHTTP1Request(int pkt_id, const char *buf,
     if (!request.complete()) {  // which means size == 0
       std::cerr << "Request still needs data." << std::endl;
     } else {  // size > 0 add the logic of detect url
-      std::clog << "ID[" << pkt_id << "]"
-                << "http1 request parsed." << std::endl;
+      log(pkt_id,"http1 request parsed.");
       // open a new http2 connection, send a setting frame.
       // std::cerr << "request parsed" << std::endl;
       submit_client_connection_setting();

@@ -70,14 +70,10 @@ int main() {
       ProxyClient *pc = pcs[pkt->id];
       // up.print_headers();
       if (pkt->size < 0) {
-#ifdef DEBUG
-        printf("%d receive close from lb\n", pkt->id);
-#endif
+        log_receive(pkt_id, "close", "LB");
         pc->sendCloseAlertToOther();
       } else {
-#ifdef DEBUG
-        printf("%d receive %d from lb\n", pkt->id, pkt->size);
-#endif
+        log_receive(pkt_id, "packet", "LB");
         pc->receivePacket(pkt->buffer, pkt->size);
       }
       // t2 = Genode::Trace::timestamp();
@@ -93,24 +89,20 @@ int main() {
     }
     if (ps_to_pc.pull_data((char *)msg, sizeof(struct Plaintext)) > 0) {
 // distribute the message:
-#ifdef DEBUG
-      printf("%d receive from ps\n", msg->id);
-#endif
+      log_receive(msg->id, "message", "PS");
       enum TextType tp = msg->type;
       ProxyClient *pc = (ProxyClient *)0;
       if (tp == SNI) {
         // when receive the SNI, that means a new connection, can we reuse the
         // existing TLS connection?
         std::string domainname = std::string(msg->buffer);
-#ifdef DEBUG
-        std::clog << domainname << std::endl;
-#endif
+        log(domainname);
         bool reuse = false;
         for (PacketsClientPair::const_iterator it = pcs.begin();
              it != pcs.end(); it++) {
           pc = it->second;
           if (pc->http2_selected && pc->domain == domainname) {
-            std::clog << "found an existing TLS connection." << std::endl;
+            log("found an existing TLS connection.")
             reuse = true;
             break;
           }
@@ -129,18 +121,14 @@ int main() {
     }
     if (mb_to_client.pull_data((char *)msg, sizeof(struct Plaintext)) > 0) {
 // distribute the message:
-#ifdef DEBUG
-      printf("%d receive %d from mb\n", msg->id, msg->size);
-#endif
+      log("receive from mb", msg->id, msg->size);
       // std::cerr << std::string(msg->buffer, msg->size);
       enum TextType tp = msg->type;
       ProxyClient *pc = pcs[msg->id];
       if (tp == HTTP) {
         pc->receiveRecord(msg->id, msg->buffer, msg->size);
       } else if (tp == CLOSE) {
-#ifdef DEBUG
-        printf("%d receive close from mb\n", msg->id);
-#endif
+        log_receive(msg->id, "close", "MB");
         pc->receiveCloseAlert();
       } else {
         fprintf(stderr, "wrong type\n");

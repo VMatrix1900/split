@@ -48,9 +48,7 @@ void Secure_box::Web_cache::SendRecord(std::string text, enum packet_type side,
     //        (side == client) ? "client" : "server");
   }
   free(msg);
-#ifdef DEBUG
-  std::clog << "ID[" << id << "] send request. size: " << size << std::endl;
-#endif
+  log("send request.", id, size);
 }
 
 void Secure_box::Web_cache::SendCloseAlert(enum packet_type side, int id) {

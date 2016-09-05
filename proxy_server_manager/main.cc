@@ -51,9 +51,7 @@ int main() {
     if (up.pull_data((void *)pkt, sizeof(struct TLSPacket)) > 0) {
       ProxyServer *ps = pss[pkt->id];
       if (pkt->size < 0) {
-#ifdef DEBUG
-        printf("%d receive %d from lb\n", pkt->id, pkt->size);
-#endif
+        log_receive(pkt->id, "packet", "LB", pkt->size);
         ps->sendCloseAlertToOther();
       } else {
         ps->receivePacket(pkt->buffer, pkt->size);
@@ -62,9 +60,7 @@ int main() {
     }
     if (pc_to_ps.pull_data((void *)msg, sizeof(struct Plaintext)) > 0) {
 // distribute the message:
-#ifdef DEBUG
-      printf("%d receive %d from pc\n", msg->id, msg->size);
-#endif
+      log_receive(msg->id, "message", "PC", msg->size);
       enum TextType tp = msg->type;
       ProxyServer *ps = pss[msg->id];
       if (tp == CRT) {
@@ -75,17 +71,13 @@ int main() {
     }  // pc_to_ps.print_headers();
     if (mb_to_server.pull_data((void *)msg, sizeof(struct Plaintext)) > 0) {
 // distribute the message:
-#ifdef DEBUG
-      printf("%d receive %d from mb\n", msg->id, msg->size);
-#endif
       enum TextType tp = msg->type;
       ProxyServer *ps = pss[msg->id];
       if (tp == HTTP) {
+        log_receive(msg->id, "message", "MB", msg->size);
         ps->receiveRecord(msg->buffer, msg->size);
       } else if (tp == CLOSE) {
-#ifdef DEBUG
-        printf("%d receive close from mb\n", msg->id);
-#endif
+        log_receive(msg->id, "close", "MB");
         ps->receiveCloseAlert();
       } else {
         fprintf(stderr, "wrong type\n");
