@@ -21,7 +21,9 @@ Channel SSL_to_TCP("ssl_to_tcp");
 struct timeval usec = {0, 1};
 struct timeval msec = {0, 600};
 
-void log(std::string txt) { std::clog << txt << std::endl; }
+namespace {
+  void log(std::string txt) { std::clog << txt << std::endl; }
+}
 
 int timecount = 0;
 int nat_netfilter_lookup(struct sockaddr *dst_addr, socklen_t *dst_addrlen,
@@ -124,7 +126,7 @@ void sendCloseToGenode(int id, enum packet_type side) {
   pi.side = side;
   pi.size = 10;
   while (TCP_to_SSL.put_data(
-             &pi, pi.size + offsetof(struct TLSPacket, buffer)) < 0) {
+             &pi, pi.size + offsetof(struct TLSPacket, buffer)) <= 0) {
     ;
   }
   std::string sidetxt = (side == close_client) ? "close_client" : "close_server";
@@ -147,7 +149,7 @@ void readcb(struct bufferevent *bev, void *ptr, enum packet_type side) {
   /* memcpy(buffer, *write, pi.size); */
   if (pi.size > 0) {
     while (TCP_to_SSL.put_data(
-               &pi, pi.size + offsetof(struct TLSPacket, buffer)) < 0) {
+               &pi, pi.size + offsetof(struct TLSPacket, buffer)) <= 0) {
       ;
     }
     std::string sidetxt = (side == server) ? "server" : "client";

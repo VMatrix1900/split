@@ -6,6 +6,7 @@
 #include "message.h"
 #include "cache.hpp"
 #include "channel.hpp"
+#include "log.h"
 #ifndef IN_LINUX
 #include <sharedmem_session/connection.h>
 #include <securebox_session/shared_buffer.h>

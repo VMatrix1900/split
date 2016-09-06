@@ -3,6 +3,7 @@ project (proxy)
 
 set(CMAKE_BUILD_TYPE DEBUG)
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 add_definitions(-DIN_LINUX -DDEBUG)
 add_subdirectory(channel)
 add_subdirectory(proxy)

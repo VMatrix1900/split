@@ -1,5 +1,6 @@
 #pragma once
 #include "httpxx/http.hpp"
+#include "log.h"
 
 class HTTPStream {
 public:
@@ -10,5 +11,8 @@ public:
 
   HTTPStream(int id) : pkt_id(id) {
     response = http::ResponseBuilder(tmp);
+  }
+  ~HTTPStream() {
+    log(pkt_id, "Stream destroyed");
   }
 };

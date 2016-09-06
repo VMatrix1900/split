@@ -5,7 +5,7 @@ Channel::Channel(const char *name): mq(boost::interprocess::open_or_create, name
 Channel::~Channel() {
 }
 
-// send the data, if success return the size sent(== size); if fail, return -1
+// send the data, if success return size; if fail, return -1
 // may block
 int Channel::put_data(void *data_ptr, std::size_t size) {
   try{

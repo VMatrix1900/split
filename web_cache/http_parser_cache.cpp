@@ -39,7 +39,7 @@ void Secure_box::Web_cache::SendRecord(std::string text, enum packet_type side,
     msg->size = std::min(length, MAX_MSG_SIZE);
     memcpy(msg->buffer, buf, msg->size);
     while (dst->put_data((void *)msg,
-                         msg->size + offsetof(struct Plaintext, buffer)) == 0) {
+                         msg->size + offsetof(struct Plaintext, buffer)) <= 0) {
       ;
     }
     length -= msg->size;
@@ -58,7 +58,7 @@ void Secure_box::Web_cache::SendCloseAlert(enum packet_type side, int id) {
   msg->id = id;
   msg->size = 0;
   while (dst->put_data((void *)msg,
-                       msg->size + offsetof(struct Plaintext, buffer)) == 0) {
+                       msg->size + offsetof(struct Plaintext, buffer)) <= 0) {
     ;
   }
   free(msg);

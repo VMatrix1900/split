@@ -14,7 +14,7 @@ int main(int argc, char *argv[]) {
     if (TCP_to_SSL.pull_data(&pi, 35000) > 0) {
       if (pi.side == server) {
         while (up_server.put_data(
-                   (void *)&pi, pi.size + offsetof(struct TLSPacket, buffer)) <
+                   (void *)&pi, pi.size + offsetof(struct TLSPacket, buffer)) <=
                0) {
           ;
         }
@@ -26,7 +26,7 @@ int main(int argc, char *argv[]) {
 #endif
       } else if (pi.side == client) {
         while (up_client.put_data(
-                   (void *)&pi, pi.size + offsetof(struct TLSPacket, buffer)) <
+                   (void *)&pi, pi.size + offsetof(struct TLSPacket, buffer)) <=
                0) {
           ;
         }
@@ -40,7 +40,7 @@ int main(int argc, char *argv[]) {
       } else if (pi.side == close_client) {
         pi.size = -1;
         while (up_client.put_data((void *)&pi,
-                                  offsetof(struct TLSPacket, buffer)) < 0) {
+                                  offsetof(struct TLSPacket, buffer)) <= 0) {
           ;
         }
 #ifdef DEBUG
@@ -54,7 +54,7 @@ int main(int argc, char *argv[]) {
         pi.size = -1;
         // PINF("[%d] forward close to client", pi.id);
         while (up_server.put_data((void *)&pi,
-                                  offsetof(struct TLSPacket, buffer)) < 0) {
+                                  offsetof(struct TLSPacket, buffer)) <= 0) {
           ;
         }
 #ifdef DEBUG
@@ -75,7 +75,7 @@ int main(int argc, char *argv[]) {
         pi.side = close_server;
       }
       while (SSL_to_TCP.put_data(
-                 &pi, pi.size + offsetof(struct TLSPacket, buffer)) < 0) {
+                 &pi, pi.size + offsetof(struct TLSPacket, buffer)) <= 0) {
         ;
       }
 #ifdef DEBUG
@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
         pi.side = close_client;
       }
       while (SSL_to_TCP.put_data(
-                 &pi, pi.size + offsetof(struct TLSPacket, buffer)) < 0) {
+                 &pi, pi.size + offsetof(struct TLSPacket, buffer)) <= 0) {
         ;
       }
 #ifdef DEBUG

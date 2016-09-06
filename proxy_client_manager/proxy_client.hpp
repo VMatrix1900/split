@@ -58,6 +58,7 @@ int select_next_proto_cb(SSL *ssl _U_, unsigned char **out,
     errx(1, "Server did not advertise " NGHTTP2_PROTO_VERSION_ID);
   } else if (rv == 1) {
     pc->http2_selected = true;
+    log("HTTP2 selected: " + pc->domain);
     pc->init_http2_session();
   } else if (rv == 0) {
     pc->http2_selected = false;

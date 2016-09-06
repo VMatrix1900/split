@@ -70,10 +70,10 @@ int main() {
       ProxyClient *pc = pcs[pkt->id];
       // up.print_headers();
       if (pkt->size < 0) {
-        log_receive(pkt_id, "close", "LB");
+        log_receive(pkt->id, "close", "LB");
         pc->sendCloseAlertToOther();
       } else {
-        log_receive(pkt_id, "packet", "LB");
+        log_receive(pkt->id, "packet", "LB", pkt->size);
         pc->receivePacket(pkt->buffer, pkt->size);
       }
       // t2 = Genode::Trace::timestamp();
@@ -88,8 +88,8 @@ int main() {
       // }
     }
     if (ps_to_pc.pull_data((char *)msg, sizeof(struct Plaintext)) > 0) {
-// distribute the message:
-      log_receive(msg->id, "message", "PS");
+      // distribute the message:
+      log_receive(msg->id, "message", "PS", msg->size);
       enum TextType tp = msg->type;
       ProxyClient *pc = (ProxyClient *)0;
       if (tp == SNI) {
@@ -102,12 +102,13 @@ int main() {
              it != pcs.end(); it++) {
           pc = it->second;
           if (pc->http2_selected && pc->domain == domainname) {
-            log("found an existing TLS connection.")
+            log("found an existing TLS connection." + domainname);
             reuse = true;
             break;
           }
         }
         if (!reuse) {
+          log(msg->id, "Create a new connection");
           pcs[msg->id] = new ProxyClient(NULL, msg->id, &down, &pc_to_ps,
                                          &client_to_mb, pkt, msg);
           pc = pcs[msg->id];
@@ -120,12 +121,12 @@ int main() {
       }
     }
     if (mb_to_client.pull_data((char *)msg, sizeof(struct Plaintext)) > 0) {
-// distribute the message:
-      log("receive from mb", msg->id, msg->size);
+      // distribute the message:
       // std::cerr << std::string(msg->buffer, msg->size);
       enum TextType tp = msg->type;
       ProxyClient *pc = pcs[msg->id];
       if (tp == HTTP) {
+        log_receive(msg->id, "packet", "MB", msg->size);
         pc->receiveRecord(msg->id, msg->buffer, msg->size);
       } else if (tp == CLOSE) {
         log_receive(msg->id, "close", "MB");

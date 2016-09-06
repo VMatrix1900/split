@@ -89,14 +89,16 @@ static int on_begin_frame_callback(nghttp2_session *session,
 static int on_stream_close_callback(nghttp2_session *session, int32_t stream_id,
                                     uint32_t error_code, void *user_data) {
   ProxyClient *session_data = (ProxyClient *)user_data;
+#ifdef DEBUG
+  std::cout << "Stream " << stream_id
+            << " closed with error_code=" << error_code << std::endl;
+#endif
   HTTPStream *stream = session_data->stream_id_to_stream[stream_id];
 
   session_data->pkt_id_to_stream.erase(stream->pkt_id);
-  session_data->stream_id_to_stream.erase(stream_id);
   delete session_data->stream_id_to_stream[stream_id];
+  session_data->stream_id_to_stream.erase(stream_id);
 
-  std::cout << "Stream " << stream_id
-            << " closed with error_code=" << error_code;
   // TODO when do we close the session.
   // int rv = nghttp2_session_terminate_session(session, NGHTTP2_NO_ERROR);
   // if (rv != 0) {
@@ -115,7 +117,8 @@ static int on_data_chunk_recv_callback(nghttp2_session *session _U_,
                                        uint8_t flags _U_, int32_t stream_id,
                                        const uint8_t *data, size_t len,
                                        void *user_data) {
-  // std::cout << "receive datachunk " << std::endl;
+  log("receive data chunk", stream_id, len);
+  // log(std::string((const char*)data, len));
   ProxyClient *session_data = (ProxyClient *)user_data;
 
   session_data->stream_id_to_stream[stream_id]->tmp.append_body(
@@ -143,7 +146,8 @@ static ssize_t body_read_callback(nghttp2_session *session _U_,
 ProxyClient::ProxyClient(struct cert_ctx *ctx, int id, Channel *down,
                          Channel *otherside, Channel *to_mb,
                          struct TLSPacket *pkt, struct Plaintext *msg)
-    : ProxyBase(ctx, id, down, otherside, to_mb, pkt, msg) {
+    : ProxyBase(ctx, id, down, otherside, to_mb, pkt, msg),
+      http2_selected(false) {
   const SSL_METHOD *meth = TLSv1_2_method();
   SSL_CTX *sslctx = SSL_CTX_new(meth);
   // now we ban begin initialize the client side.
@@ -292,6 +296,7 @@ void ProxyClient::forwardRecordForHTTP2() {
       exit(-3);
   }
   if (!size) {
+    log("No record");
     return;
   }
   // t4 = Genode::Trace::timestamp();
@@ -302,13 +307,11 @@ void ProxyClient::forwardRecordForHTTP2() {
   //   record_speed = 0;
   //   j = 0;
   // }
-  log("Send to http2 parser: ",size);
   ssize_t rv = parseHTTP2Response((const uint8_t *)buf, size);
   if (rv < 0) {
     std::cerr << "nghttp2 session mem recv wrong:  " << rv << std::endl;
     exit(-1);
   }
-  // TODO check queue stream
 }
 
 void ProxyClient::receiveRecord(int pkt_id, const char *recordbuffer,
@@ -371,9 +374,12 @@ void ProxyClient::receivePacket(const char *packetbuffer, int length) {
 }
 
 void ProxyClient::processResponse(int stream_id) {
+  log("Process the reponse");
   http::BufferedResponse &tmp = stream_id_to_stream[stream_id]->tmp;
   http::ResponseBuilder &response = stream_id_to_stream[stream_id]->response;
+  log("http2 response parsed");
   if (!tmp.has_header(std::string("content-length"))) {
+    log("insert the content length header");
     size_t body_length = tmp.body().size();
     std::ostringstream ost;
     ost << body_length;
@@ -382,11 +388,12 @@ void ProxyClient::processResponse(int stream_id) {
   }
   response.set_minor_version(1);
   std::string msg = response.to_string() + tmp.body();
+  log("got the reponse string");
   int msg_id = stream_id_to_stream[stream_id]->pkt_id;
-  sendRecordWithId(msg_id, (char *)msg.c_str(),
-                   msg.size());
-  log("http2 response parsed");
-  log("record sent: ", msg_id, msg.size());
+  log("got the message id");
+  std::clog << msg_id;
+  sendRecordWithId(msg_id, (char *)msg.c_str(), msg.size());
+  log("record sent", msg_id, msg.size());
 }
 
 void ProxyClient::submit_client_connection_setting() {
@@ -415,20 +422,27 @@ void ProxyClient::submit_client_request(int pkt_id) {
   http::Message::Headers pseudoheaders = {
       {std::string(":method"), request.method_name()},
       {std::string(":scheme"), std::string("https")},
-      {std::string(":path"), request.url()}};
+      {std::string(":path"), request.url()},
+      {std::string("user-agent"), std::string("nghttp2/1.14.0-DEV")}};
   for (http::Message::Headers::const_iterator cit = pseudoheaders.begin();
        cit != pseudoheaders.end(); ++cit) {
     nva.push_back(make_nv(cit->first, cit->second));
   }
+  // log("Before the NVA");
+  print_nv(nva.data(), nva.size());
   for (http::Message::Headers::const_iterator cit = headers.begin();
        cit != headers.end(); ++cit) {
-    if (!cit->first.compare("Host")) {
-      nva.insert(nva.begin(), make_nv(":authority", cit->second));
-    } else if (cit->first.compare("Connection")) {
+    if (!http::icmp("Host", cit->first)) {
+      log("insert the authority");
+      nva.insert(nva.begin(), make_nv_ls(":authority", cit->second));
+      print_nv(nva.data(), nva.size());
+    } else if (http::icmp(cit->first, "Connection") && http::icmp("user-agent", cit->first)) {
       nva.push_back(make_nv(cit->first, cit->second));
     }
   }
 
+  log("After the NVA");
+  print_nv(nva.data(), nva.size());
   if (pkt_id_to_stream[pkt_id]->request.body().size() != 0) {
     nghttp2_data_provider data_pdr;
     data_pdr.source.ptr = &(pkt_id_to_stream[pkt_id]->request);
@@ -474,7 +488,7 @@ std::string ProxyClient::sendHTTP1Request(int pkt_id, const char *buf,
     if (!request.complete()) {  // which means size == 0
       std::cerr << "Request still needs data." << std::endl;
     } else {  // size > 0 add the logic of detect url
-      log(pkt_id,"http1 request parsed.");
+      log(pkt_id, "http1 request parsed.");
       // open a new http2 connection, send a setting frame.
       // std::cerr << "request parsed" << std::endl;
       submit_client_connection_setting();

@@ -37,7 +37,7 @@ class ProxyBase {
       pkt->id = id;
       pkt->size = BIO_read(out_bio, pkt->buffer, avaliable);
       while (down->put_data((void *)pkt, pkt->size + offsetof(struct TLSPacket,
-                                                              buffer)) == 0) {
+                                                              buffer)) <= 0) {
         ;
       }
       // printf("packet sent down\n");
@@ -130,9 +130,9 @@ class ProxyBase {
     }
     while (length > 0) {
       msg->size = (length <= MAX_MSG_SIZE) ? length : MAX_MSG_SIZE;
-      memcpy(msg->buffer, msgbuffer, length);
+      memcpy(msg->buffer, msgbuffer, msg->size);
       while (sendto->put_data((void *)msg,
-                              msg->size + offsetof(struct Plaintext, buffer)) ==
+                              msg->size + offsetof(struct Plaintext, buffer)) <=
              0) {
         ;
       }
@@ -143,33 +143,36 @@ class ProxyBase {
     // otherside->print_headers();
   }
 
-  void sendRecordWithId(int id, char *msgbuffer, int length) {
+  void sendRecordWithId(int pkt_id, char *msgbuffer, int length) {
+    log("begin send record", pkt_id, length);
     msg->type = HTTP;
+    msg->id = pkt_id;
     Channel *sendto = to_mb;
+    log("before send record", pkt_id, length);
     while (length > 0) {
       msg->size = (length <= MAX_MSG_SIZE) ? length : MAX_MSG_SIZE;
-      memcpy(msg->buffer, msgbuffer, length);
+      log("before memcpy", pkt_id, msg->size);
+      memcpy(msg->buffer, msgbuffer, msg->size);
+      log("after memcpy", pkt_id, length);
       while (sendto->put_data((void *)msg,
-                              msg->size + offsetof(struct Plaintext, buffer)) ==
+                              msg->size + offsetof(struct Plaintext, buffer)) <=
              0) {
         ;
       }
       length -= msg->size;
       msgbuffer += msg->size;
+      log("sent record", pkt_id, length);
     }
   }
 
   void sendRecord(char *recordbuffer, int length) {
-#ifdef DEBUG
-    std::clog << "send record size: " << length << std::endl;
-#endif
     sendMessage(HTTP, recordbuffer, length);
   }
 
   void sendCloseAlertDown() {
     pkt->id = id;
     pkt->size = -1;
-    while (down->put_data((void *)pkt, offsetof(struct TLSPacket, buffer)) ==
+    while (down->put_data((void *)pkt, offsetof(struct TLSPacket, buffer)) <=
            0) {
       ;
     }
