@@ -29,20 +29,17 @@ int main() {
     return -1;
   } else {
   }
-  // up.initialize_queue((char *)"up_server");
-  // down.initialize_queue((char *)"down_server");
-  // ps_to_pc.initialize_queue((char *)"ps_to_pc");
-  // pc_to_ps.initialize_queue((char *)"pc_to_ps");
-  // server_to_mb.initialize_queue((char *)"server_to_mb");
-  // mb_to_server.initialize_queue((char *)"mb_to_server");
   struct TLSPacket *pkt = (struct TLSPacket *)malloc(sizeof(struct TLSPacket));
   struct Plaintext *msg = (struct Plaintext *)malloc(sizeof(struct Plaintext));
   ProxyServer **pss = (ProxyServer **)malloc(MAXCONNS * sizeof(ProxyServer *));
   for (int i = 0; i < MAXCONNS; i++) {
-    // pss[i] = new (Genode::env()->heap()) ProxyServer(ctx, i, &down,
-    // &ps_to_pc, &server_to_mb, pkt, msg, &cert_cache);
+#ifdef IN_LINUX
     pss[i] = new ProxyServer(ctx, i, &down, &ps_to_pc, &server_to_mb, pkt, msg,
                              &cert_cache);
+#else
+    pss[i] = new (Genode::env()->heap()) ProxyServer(ctx, i, &down,
+    &ps_to_pc, &server_to_mb, pkt, msg, &cert_cache);
+#endif
   }
 
   printf("proxy server is running\n");

@@ -24,11 +24,14 @@ int main() {
       (struct Plaintext *)malloc(sizeof(struct Plaintext));
   struct Plaintext *client_msg =
       (struct Plaintext *)malloc(sizeof(struct Plaintext));
-  // Secure_box::Web_cache *cache_mb = new (Genode::env()->heap())
-  //     Secure_box::Web_cache(&mb_to_client, &mb_to_server);
 
+#ifdef IN_LINUX
   Secure_box::Web_cache *cache_mb =
       new Secure_box::Web_cache(&mb_to_client, &mb_to_server);
+#else
+  Secure_box::Web_cache *cache_mb = new (Genode::env()->heap())
+      Secure_box::Web_cache(&mb_to_client, &mb_to_server);
+#endif
   while (true) {
     bool newdata = false;
     if (client_to_mb.pull_data((void *)client_msg, sizeof(struct Plaintext)) >

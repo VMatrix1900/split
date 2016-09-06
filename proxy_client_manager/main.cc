@@ -36,24 +36,10 @@ int main() {
   }
   ERR_load_BIO_strings();
   // printf("get ctx\n");
-  // up.initialize_queue((char *)"up_client");
-  // down.initialize_queue((char *)"down_client");
-  // ps_to_pc.initialize_queue((char *)"ps_to_pc");
-  // pc_to_ps.initialize_queue((char *)"pc_to_ps");
-  // client_to_mb.initialize_queue((char *)"client_to_mb");
-  // mb_to_client.initialize_queue((char *)"mb_to_client");
   struct TLSPacket *pkt = (struct TLSPacket *)malloc(sizeof(struct TLSPacket));
   struct Plaintext *msg = (struct Plaintext *)malloc(sizeof(struct Plaintext));
   // TODO in_pkt and out_pkt
   PacketsClientPair pcs;
-  // ProxyClient **pcs = (ProxyClient **)malloc(MAXCONNS * sizeof(ProxyClient
-  // *));
-  // for (int i = 0; i < MAXCONNS; i++) {
-  //   // pcs[i] = new (Genode::env()->heap())
-  //   //     ProxyClient(NULL, i, &down, &pc_to_ps, &client_to_mb, pkt, msg);
-  //   pcs[i] =
-  //       new ProxyClient(NULL, i, &down, &pc_to_ps, &client_to_mb, pkt, msg);
-  // }
 
   printf("proxy client is running\n");
 #ifdef MEASURE_TIME
@@ -109,8 +95,13 @@ int main() {
         }
         if (!reuse) {
           log(msg->id, "Create a new connection");
+          #ifdef IN_LINUX
           pcs[msg->id] = new ProxyClient(NULL, msg->id, &down, &pc_to_ps,
                                          &client_to_mb, pkt, msg);
+          #else
+          pcs[i] = new (Genode::env()->heap())
+                 ProxyClient(NULL, i, &down, &pc_to_ps, &client_to_mb, pkt, msg);
+          #endif
           pc = pcs[msg->id];
           pc->receiveSNI(msg->buffer);
         } else {

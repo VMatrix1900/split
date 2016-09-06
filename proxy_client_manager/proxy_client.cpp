@@ -96,7 +96,11 @@ static int on_stream_close_callback(nghttp2_session *session, int32_t stream_id,
   HTTPStream *stream = session_data->stream_id_to_stream[stream_id];
 
   session_data->pkt_id_to_stream.erase(stream->pkt_id);
+#ifdef IN_LINUX
   delete session_data->stream_id_to_stream[stream_id];
+#else
+  Genode::destroy(Genode::env()->heap(), session_data->stream_id_to_stream[stream_id]);
+#endif
   session_data->stream_id_to_stream.erase(stream_id);
 
   // TODO when do we close the session.
@@ -468,7 +472,11 @@ std::string ProxyClient::sendHTTP1Request(int pkt_id, const char *buf,
   std::string frame;
   char *data = (char *)buf;
   if (pkt_id_to_stream.find(pkt_id) == pkt_id_to_stream.end()) {
+    #ifdef IN_LINUX
     pkt_id_to_stream[pkt_id] = new HTTPStream(pkt_id);
+    #else
+    pkt_id_to_stream[pkt_id] = new (Genode::env()->heap()) HTTPStream(pkt_id);
+    #endif
   }
   http::BufferedRequest &request = pkt_id_to_stream[pkt_id]->request;
   while (size > 0) {

@@ -11,8 +11,11 @@
 Secure_box::HTTPStreamParser *Secure_box::Web_cache::GetParser(int id) {
   // search the existing one first
   if (_parsers[id] == (Secure_box::HTTPStreamParser *)0) {
-    // _parsers[id] = new (Genode::env()->heap()) Secure_box::HTTPStreamParser;
+#ifdef IN_LINUX
     _parsers[id] = new Secure_box::HTTPStreamParser;
+#else
+    _parsers[id] = new (Genode::env()->heap()) Secure_box::HTTPStreamParser;
+#endif
   }
 
   return _parsers[id];
@@ -20,8 +23,11 @@ Secure_box::HTTPStreamParser *Secure_box::Web_cache::GetParser(int id) {
 
 void Secure_box::Web_cache::Delete_parser(int id) {
   if (_parsers[id] != (Secure_box::HTTPStreamParser *)0) {
-    // Genode::destroy(Genode::env()->heap(), _parsers[id]);
+#ifdef IN_LINUX
     delete _parsers[id];
+#else
+    Genode::destroy(Genode::env()->heap(), _parsers[id]);
+#endif
     _parsers[id] = (Secure_box::HTTPStreamParser *)0;
   }
 }
