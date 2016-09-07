@@ -9,15 +9,15 @@
 #ifndef IN_LINUX
 #include <timer_session/connection.h>  //timer
 #endif
-Channel up("up_client");
-Channel down("down_client");
-Channel ps_to_pc("ps_to_pc");
-Channel pc_to_ps("pc_to_ps");
-Channel mb_to_client("mb_to_client");
-Channel client_to_mb("client_to_mb");
 
 typedef std::map<int, ProxyClient *> PacketsClientPair;
 int main() {
+  Channel up("up_client");
+  Channel down("down_client");
+  Channel ps_to_pc("ps_to_pc");
+  Channel pc_to_ps("pc_to_ps");
+  Channel mb_to_client("mb_to_client");
+  Channel client_to_mb("client_to_mb");
 #ifndef IN_LINUX
   Timer::Connection timer;
   timer.msleep(35 * 1000);
@@ -99,8 +99,8 @@ int main() {
           pcs[msg->id] = new ProxyClient(NULL, msg->id, &down, &pc_to_ps,
                                          &client_to_mb, pkt, msg);
           #else
-          pcs[i] = new (Genode::env()->heap())
-                 ProxyClient(NULL, i, &down, &pc_to_ps, &client_to_mb, pkt, msg);
+          pcs[msg->id] = new (Genode::env()->heap())
+                 ProxyClient(NULL, msg->id, &down, &pc_to_ps, &client_to_mb, pkt, msg);
           #endif
           pc = pcs[msg->id];
           pc->receiveSNI(msg->buffer);

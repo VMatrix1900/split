@@ -1,5 +1,5 @@
 TARGET    = web_cache
-SRC_CC   += main.cc cache.cpp http_parser_cache.cpp
+SRC_CC   += main.cc cache.cpp http_parser_cache.cpp $(PRG_DIR)/../proxy_base/channel.cpp
 LIBS      = base cxx config stdcxx
 INC_DIR  += $(PRG_DIR) $(PRG_DIR)/httpparserlib/
 INC_DIR  += $(PRG_DIR)/../proxy_base

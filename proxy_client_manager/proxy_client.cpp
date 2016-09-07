@@ -1,3 +1,4 @@
+#include <sstream>
 #include "proxy_client.hpp"
 #include "util.hpp"
 
@@ -26,7 +27,7 @@ static int on_header_callback(nghttp2_session *session _U_,
       if (frame->headers.cat == NGHTTP2_HCAT_RESPONSE) {
         /* Print response headers for the initiated request. */
         // check for ":status" pseudo header
-        print_nv(&nv);
+        // print_nv(&nv);
         if (*name == ':') {
           response.set_status(std::atoi((const char *)value));
         } else {
@@ -43,7 +44,7 @@ static int on_header_callback(nghttp2_session *session _U_,
     received a complete frame from the remote peer. */
 static int on_frame_recv_callback(nghttp2_session *session _U_,
                                   const nghttp2_frame *frame, void *user_data) {
-  print_frame(PRINT_RECV, frame);
+  // print_frame(PRINT_RECV, frame);
   ProxyClient *stream = (ProxyClient *)user_data;
   switch (frame->hd.type) {
     case NGHTTP2_HEADERS:
@@ -75,7 +76,7 @@ static int on_frame_recv_callback(nghttp2_session *session _U_,
 
 static int on_frame_send_callback(nghttp2_session *session,
                                   const nghttp2_frame *frame, void *user_data) {
-  print_frame(PRINT_SEND, frame);
+  // print_frame(PRINT_SEND, frame);
   return 0;
 }
 
@@ -392,10 +393,7 @@ void ProxyClient::processResponse(int stream_id) {
   }
   response.set_minor_version(1);
   std::string msg = response.to_string() + tmp.body();
-  log("got the reponse string");
   int msg_id = stream_id_to_stream[stream_id]->pkt_id;
-  log("got the message id");
-  std::clog << msg_id;
   sendRecordWithId(msg_id, (char *)msg.c_str(), msg.size());
   log("record sent", msg_id, msg.size());
 }
@@ -412,7 +410,7 @@ void ProxyClient::submit_client_connection_setting() {
   if (rv != 0) {
     std::cerr << "Could not submit SETTINGS: " << nghttp2_strerror(rv);
   } else {
-    std::cout << "Settings submitted." << std::endl;
+    // std::cout << "Settings submitted." << std::endl;
   }
 }
 
@@ -433,20 +431,20 @@ void ProxyClient::submit_client_request(int pkt_id) {
     nva.push_back(make_nv(cit->first, cit->second));
   }
   // log("Before the NVA");
-  print_nv(nva.data(), nva.size());
+  // print_nv(nva.data(), nva.size());
   for (http::Message::Headers::const_iterator cit = headers.begin();
        cit != headers.end(); ++cit) {
     if (!http::icmp("Host", cit->first)) {
-      log("insert the authority");
+      // log("insert the authority");
       nva.insert(nva.begin(), make_nv_ls(":authority", cit->second));
-      print_nv(nva.data(), nva.size());
+      // print_nv(nva.data(), nva.size());
     } else if (http::icmp(cit->first, "Connection") && http::icmp("user-agent", cit->first)) {
       nva.push_back(make_nv(cit->first, cit->second));
     }
   }
 
-  log("After the NVA");
-  print_nv(nva.data(), nva.size());
+  // log("After the NVA");
+  // print_nv(nva.data(), nva.size());
   if (pkt_id_to_stream[pkt_id]->request.body().size() != 0) {
     nghttp2_data_provider data_pdr;
     data_pdr.source.ptr = &(pkt_id_to_stream[pkt_id]->request);

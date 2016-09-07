@@ -6,18 +6,18 @@
 #endif
 #include "ssl.h"
 
-Channel up("up_server");
-Channel down("down_server");
-Channel ps_to_pc("ps_to_pc");
-Channel pc_to_ps("pc_to_ps");
-Channel mb_to_server("mb_to_server");
-Channel server_to_mb("server_to_mb");
-Cache cert_cache;
-
 int main() {
+  Channel up("up_server");
+  Channel down("down_server");
+  Channel ps_to_pc("ps_to_pc");
+  Channel pc_to_ps("pc_to_ps");
+  Channel mb_to_server("mb_to_server");
+  Channel server_to_mb("server_to_mb");
+  Cache cert_cache;
 #ifndef IN_LINUX
   Timer::Connection timer;
   timer.msleep(35 * 1000);
+  PDBG("hello server");
 #endif
   if (ssl_init() < 0) {
     printf("init wrong");
@@ -57,10 +57,10 @@ int main() {
     }
     if (pc_to_ps.pull_data((void *)msg, sizeof(struct Plaintext)) > 0) {
 // distribute the message:
-      log_receive(msg->id, "message", "PC", msg->size);
       enum TextType tp = msg->type;
       ProxyServer *ps = pss[msg->id];
       if (tp == CRT) {
+        log_receive(msg->id, "message", "PC", msg->size);
         ps->receiveCrt(msg->buffer);
       } else {
         fprintf(stderr, "wrong type\n");
