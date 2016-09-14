@@ -11,7 +11,7 @@ int find_next_slot(struct proxy_ctx *ctx)
     ctx->counts = (ctx->counts + 1) % MAXCONNS;
     if (!ctx->conns[i]) {
       return i;
-    } else if (ctx->conns[i]->cli_closed || ctx->conns[i]->serv_closed) {
+    } else if (ctx->conns[i]->cli_state == CLOSED || ctx->conns[i]->serv_state == CLOSED) {
       pxy_conn_free(ctx->conns[i]);
       return i;
     }
@@ -24,8 +24,8 @@ struct pxy_conn *pxy_conn_new(struct proxy_ctx *ctx)
 {
   struct pxy_conn *conn = (struct pxy_conn*)malloc(sizeof(struct pxy_conn));
   // setup the proxy struct;
-  conn->serv_closed = false;
-  conn->cli_closed = false;
+  conn->serv_state = OPEN;
+  conn->cli_state = OPEN;
   conn->cli_bev = NULL;
   conn->serv_bev = NULL;
   conn->index = find_next_slot(ctx);

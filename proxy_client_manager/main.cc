@@ -9,18 +9,18 @@
 #ifndef IN_LINUX
 #include <timer_session/connection.h>  //timer
 #endif
+Channel up("up_client");
+Channel down("down_client");
+Channel ps_to_pc("ps_to_pc");
+Channel pc_to_ps("pc_to_ps");
+Channel mb_to_client("mb_to_client");
+Channel client_to_mb("client_to_mb");
 
 typedef std::map<int, ProxyClient *> PacketsClientPair;
 int main() {
-  Channel up("up_client");
-  Channel down("down_client");
-  Channel ps_to_pc("ps_to_pc");
-  Channel pc_to_ps("pc_to_ps");
-  Channel mb_to_client("mb_to_client");
-  Channel client_to_mb("client_to_mb");
 #ifndef IN_LINUX
   Timer::Connection timer;
-  timer.msleep(35 * 1000);
+  timer.msleep(45 * 1000);
 #endif
 #ifdef MEASURE_TIME
   volatile unsigned int t1 = 0, t2 = 0, overhead = 0;
@@ -121,7 +121,7 @@ int main() {
         pc->receiveRecord(msg->id, msg->buffer, msg->size);
       } else if (tp == CLOSE) {
         log_receive(msg->id, "close", "MB");
-        pc->receiveCloseAlert();
+        pc->receiveCloseAlert(msg->id);
       } else {
         fprintf(stderr, "wrong type\n");
       }

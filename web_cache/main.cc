@@ -15,10 +15,6 @@ int main() {
   Timer::Connection timer;
   timer.msleep(35 * 1000);
 #endif
-  // client_to_mb.initialize_queue((char *)"client_to_mb");
-  // server_to_mb.initialize_queue((char *)"server_to_mb");
-  // mb_to_client.initialize_queue((char *)"mb_to_client");
-  // mb_to_server.initialize_queue((char *)"mb_to_server");
 
   struct Plaintext *server_msg =
       (struct Plaintext *)malloc(sizeof(struct Plaintext));
@@ -39,7 +35,7 @@ int main() {
       newdata = true;
       cache_mb->GetParser(client_msg->id);
       if (client_msg->type == CLOSE) {
-        log_receive(client_msg->id, "close", "PC");
+        // log_receive(client_msg->id, "close", "PC");
         cache_mb->SendCloseAlert(Secure_box::server, client_msg->id);
       } else {
         log_receive(client_msg->id, "message", "PC", client_msg->size);
@@ -52,10 +48,10 @@ int main() {
       newdata = true;
       cache_mb->GetParser(server_msg->id);
       if (server_msg->type == CLOSE) {
-        log_receive(server_msg->id, "close", "PS");
+        // log_receive(server_msg->id, "close", "PS");
         cache_mb->SendCloseAlert(Secure_box::client, server_msg->id);
       } else {
-        log_receive(server_msg->id, "message", "PS", server_msg->size);
+        // log_receive(server_msg->id, "message", "PS", server_msg->size);
         cache_mb->ParseHTTPRequest(server_msg->id, server_msg->buffer,
                                    server_msg->size);
       }

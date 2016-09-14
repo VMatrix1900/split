@@ -40,7 +40,7 @@ class ProxyBase {
                                                               buffer)) <= 0) {
         ;
       }
-      // printf("packet sent down\n");
+      log("packet send down", id, pkt->size);
     }
   }
 
@@ -143,30 +143,45 @@ class ProxyBase {
     // otherside->print_headers();
   }
 
-  void sendRecordWithId(int pkt_id, char *msgbuffer, int length) {
-    log("begin send record", pkt_id, length);
-    msg->type = HTTP;
+  void sendMessageWithId(int pkt_id, enum TextType type, char *msgbuffer, int length) {
+    msg->type = type;
     msg->id = pkt_id;
-    Channel *sendto = to_mb;
-    log("before send record", pkt_id, length);
-    while (length > 0) {
-      msg->size = (length <= MAX_MSG_SIZE) ? length : MAX_MSG_SIZE;
-      log("before memcpy", pkt_id, msg->size);
-      memcpy(msg->buffer, msgbuffer, msg->size);
-      log("after memcpy", pkt_id, length);
+    Channel *sendto;
+    if (type == HTTP || type == CLOSE) {  // send it to middlebox
+      sendto = to_mb;
+    } else {
+      sendto = otherside;
+    }
+    if (type == CLOSE) {
+      msg->size = -1;
       while (sendto->put_data((void *)msg,
-                              msg->size + offsetof(struct Plaintext, buffer)) <=
+                              sizeof(int) + offsetof(struct Plaintext, buffer)) <=
              0) {
         ;
       }
-      length -= msg->size;
-      msgbuffer += msg->size;
-      log("sent record", pkt_id, length);
+    } else {
+      while (length > 0) {
+        msg->size = (length <= MAX_MSG_SIZE) ? length : MAX_MSG_SIZE;
+        memcpy(msg->buffer, msgbuffer, msg->size);
+        while (sendto->put_data((void *)msg,
+                                msg->size + offsetof(struct Plaintext, buffer)) <=
+               0) {
+          ;
+        }
+        length -= msg->size;
+        msgbuffer += msg->size;
+      }
     }
+    // log("sent record", pkt_id, length);
+    // otherside->print_headers();
   }
 
   void sendRecord(char *recordbuffer, int length) {
     sendMessage(HTTP, recordbuffer, length);
+  }
+
+  void sendRecordWithId(int pkt_id, char *msgbuffer, int length) {
+    sendMessageWithId(pkt_id, HTTP, msgbuffer, length);
   }
 
   void sendCloseAlertDown() {
@@ -183,8 +198,12 @@ class ProxyBase {
 
   void sendCloseAlertToOther() { sendMessage(CLOSE, NULL, -1); }
 
+  void sendCloseAlertToOtherWithId(int pkt_id) {
+    log("send close", pkt_id, -1);
+    sendMessageWithId(pkt_id, CLOSE, NULL, -1);
+  }
+
   void receiveCloseAlert() {
-    sendPacket();
     sendCloseAlertDown();
   }
 

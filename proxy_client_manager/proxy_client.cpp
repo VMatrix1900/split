@@ -44,8 +44,9 @@ static int on_header_callback(nghttp2_session *session _U_,
     received a complete frame from the remote peer. */
 static int on_frame_recv_callback(nghttp2_session *session _U_,
                                   const nghttp2_frame *frame, void *user_data) {
-  // print_frame(PRINT_RECV, frame);
   ProxyClient *stream = (ProxyClient *)user_data;
+  // log(stream->stream_id_to_stream[frame->hd.stream_id]->pkt_id, "receive frame");
+  print_frame(PRINT_RECV, frame);
   switch (frame->hd.type) {
     case NGHTTP2_HEADERS:
       if (frame->hd.flags & NGHTTP2_FLAG_END_STREAM) {
@@ -67,8 +68,11 @@ static int on_frame_recv_callback(nghttp2_session *session _U_,
     case NGHTTP2_PING:
       nghttp2_session_send(session);
       break;
+    case NGHTTP2_GOAWAY:
+      std::clog << "GOAWAY frame" << std::endl;
+      break;
     default:
-      // std::cout << "Others" << std::endl;
+      std::cout << "Others" << std::endl;
       break;
   }
   return 0;
@@ -90,17 +94,19 @@ static int on_begin_frame_callback(nghttp2_session *session,
 static int on_stream_close_callback(nghttp2_session *session, int32_t stream_id,
                                     uint32_t error_code, void *user_data) {
   ProxyClient *session_data = (ProxyClient *)user_data;
-#ifdef DEBUG
-  std::cout << "Stream " << stream_id
-            << " closed with error_code=" << error_code << std::endl;
-#endif
   HTTPStream *stream = session_data->stream_id_to_stream[stream_id];
+#ifdef DEBUG
+  std::cout << stream->pkt_id << " closed with error_code=" << error_code
+            << std::endl;
+#endif
+  session_data->sendCloseAlertToOtherWithId(stream->pkt_id);
 
   session_data->pkt_id_to_stream.erase(stream->pkt_id);
 #ifdef IN_LINUX
   delete session_data->stream_id_to_stream[stream_id];
 #else
-  Genode::destroy(Genode::env()->heap(), session_data->stream_id_to_stream[stream_id]);
+  Genode::destroy(Genode::env()->heap(),
+                  session_data->stream_id_to_stream[stream_id]);
 #endif
   session_data->stream_id_to_stream.erase(stream_id);
 
@@ -122,7 +128,6 @@ static int on_data_chunk_recv_callback(nghttp2_session *session _U_,
                                        uint8_t flags _U_, int32_t stream_id,
                                        const uint8_t *data, size_t len,
                                        void *user_data) {
-  log("receive data chunk", stream_id, len);
   // log(std::string((const char*)data, len));
   ProxyClient *session_data = (ProxyClient *)user_data;
 
@@ -136,7 +141,6 @@ static ssize_t body_read_callback(nghttp2_session *session _U_,
                                   size_t length, uint32_t *data_flags,
                                   nghttp2_data_source *source,
                                   void *user_data _U_) {
-  log("call body read calback");
   http::BufferedRequest *request = (http::BufferedRequest *)source->ptr;
   const std::string &body = request->body();
   ssize_t r = body.copy((char *)buf, length, request->copied);
@@ -236,6 +240,14 @@ void ProxyClient::receiveSNI(char *SNIbuffer) {
   // fprintf(stderr, "[%d] receive sni buffer: %s\n", id, SNIbuffer);
   SSL_do_handshake(ssl);
   sendPacket();
+}
+
+void ProxyClient::receiveCloseAlert(int pkt_id) {
+  if (http2_selected) {
+    // do nothing. stream is already closed.
+  } else {
+    sendCloseAlertDown();
+  }
 }
 
 void ProxyClient::sendCrt() {
@@ -361,6 +373,8 @@ void ProxyClient::receivePacket(const char *packetbuffer, int length) {
       handshake_done = true;
       if (!first_msg_buf.empty()) {
         // TODO receive record fake id
+        std::clog << "first msg buffer is not empty" << std::endl;
+        // exit(-10);
         ProxyBase::receiveRecord(first_msg_buf.c_str(), first_msg_buf.length());
       }
 #ifdef MEASURE_TIME
@@ -379,12 +393,12 @@ void ProxyClient::receivePacket(const char *packetbuffer, int length) {
 }
 
 void ProxyClient::processResponse(int stream_id) {
-  log("Process the reponse");
+  // log("Process the reponse");
   http::BufferedResponse &tmp = stream_id_to_stream[stream_id]->tmp;
   http::ResponseBuilder &response = stream_id_to_stream[stream_id]->response;
-  log("http2 response parsed");
+  // log("http2 response parsed");
   if (!tmp.has_header(std::string("content-length"))) {
-    log("insert the content length header");
+    // log("insert the content length header");
     size_t body_length = tmp.body().size();
     std::ostringstream ost;
     ost << body_length;
@@ -438,7 +452,8 @@ void ProxyClient::submit_client_request(int pkt_id) {
       // log("insert the authority");
       nva.insert(nva.begin(), make_nv_ls(":authority", cit->second));
       // print_nv(nva.data(), nva.size());
-    } else if (http::icmp(cit->first, "Connection") && http::icmp("user-agent", cit->first)) {
+    } else if (http::icmp(cit->first, "Connection") &&
+               http::icmp("user-agent", cit->first)) {
       nva.push_back(make_nv(cit->first, cit->second));
     }
   }
@@ -461,6 +476,7 @@ void ProxyClient::submit_client_request(int pkt_id) {
     // TODO destructor;
   } else {
     log(pkt_id, "http request submitted.");
+    log(stream_id, "http request submitted.");
     stream_id_to_stream[stream_id] = pkt_id_to_stream[pkt_id];
   }
 }
@@ -470,11 +486,11 @@ std::string ProxyClient::sendHTTP1Request(int pkt_id, const char *buf,
   std::string frame;
   char *data = (char *)buf;
   if (pkt_id_to_stream.find(pkt_id) == pkt_id_to_stream.end()) {
-    #ifdef IN_LINUX
+#ifdef IN_LINUX
     pkt_id_to_stream[pkt_id] = new HTTPStream(pkt_id);
-    #else
+#else
     pkt_id_to_stream[pkt_id] = new (Genode::env()->heap()) HTTPStream(pkt_id);
-    #endif
+#endif
   }
   http::BufferedRequest &request = pkt_id_to_stream[pkt_id]->request;
   while (size > 0) {

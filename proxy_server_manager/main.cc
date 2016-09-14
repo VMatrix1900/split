@@ -48,9 +48,10 @@ int main() {
     if (up.pull_data((void *)pkt, sizeof(struct TLSPacket)) > 0) {
       ProxyServer *ps = pss[pkt->id];
       if (pkt->size < 0) {
-        log_receive(pkt->id, "packet", "LB", pkt->size);
+        log_receive(pkt->id, "close", "LB");
         ps->sendCloseAlertToOther();
       } else {
+        log_receive(pkt->id, "packet", "LB", pkt->size);
         ps->receivePacket(pkt->buffer, pkt->size);
       }
       newdata = true;

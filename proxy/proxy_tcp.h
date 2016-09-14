@@ -6,9 +6,10 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+enum BevState {OPEN, TO_CLOSE, CLOSED};
 struct pxy_conn {
-  bool serv_closed;
-  bool cli_closed;
+  enum BevState serv_state;
+  enum BevState cli_state;
   struct sockaddr_storage dstsock;
   socklen_t dstsocklen;
   int index;

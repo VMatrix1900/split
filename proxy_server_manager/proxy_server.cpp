@@ -16,7 +16,7 @@ void ProxyServer::receivePacket(const char *packetbuffer, int length) {
     } else {
       SNI_parsed = true;
       if (SNI_buffer) {
-        printf("[%d] sni is parsed %s\n", id, SNI_buffer);
+        printf("ID[%d] sni is parsed %s\n", id, SNI_buffer);
         // sni parse is finished. now the server ssl is not ready. so we can
         // only initiate client hanshake.
         // check to see if we have fake certificate cached here;

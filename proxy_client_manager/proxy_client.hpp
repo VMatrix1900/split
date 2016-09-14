@@ -33,6 +33,7 @@ class ProxyClient : public ProxyBase {
   void init_http2_session();
   void receivePacket(const char *packetbuffer, int length);
   void receiveSNI(char *SNIbuffer);
+  void receiveCloseAlert(int pkt_id);
   void forwardRecordForHTTP2();
   using ProxyBase::receiveRecord;
   void receiveRecord(int id, const char *recordbuffer, int length);

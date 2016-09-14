@@ -50,11 +50,10 @@ void Secure_box::Web_cache::SendRecord(std::string text, enum packet_type side,
     }
     length -= msg->size;
     buf += msg->size;
-    // printf("[%d] send record [%d] to %s\n", id, msg->size,
-    //        (side == client) ? "client" : "server");
+    printf("[%d] send record [%d] to %s\n", id, msg->size,
+           (side == client) ? "client" : "server");
   }
   free(msg);
-  log("send request.", id, size);
 }
 
 void Secure_box::Web_cache::SendCloseAlert(enum packet_type side, int id) {
@@ -93,10 +92,10 @@ void Secure_box::Web_cache::ParseHTTPRequest(int id, const char *buf,
     } else {  // size > 0 add the logic of detect url
       if (request.method_name() == "GET") {
         _parsers[id]->url = request.header("HOST") + request.url();
+        std::cerr << id << " : " << _parsers[id]->url << std::endl;
         std::string cached = _resourcecache.GetResource(_parsers[id]->url);
         if (cached != "") {
           // printf("[%d] web cache hit, length is %d", id, cached.length());
-          // std::cerr << _parsers[id]->url;
           SendRecord(cached, server, id);
         } else {
           // printf("[%d] web cache miss", id);
@@ -150,9 +149,9 @@ void Secure_box::Web_cache::ParseHTTPResponse(int id, const char *buf,
     int time = 900;
     // Check that we've parsed an entire response.
     if (!response.complete()) {  // which means size == 0
-      // std::cerr << "Response still needs data." << std::endl;
+      std::cerr << id <<  " Response still needs data." << std::endl;
     } else {  // size > 0 check cache control policy
-      // std::cerr <<  id << "reponse parsed: " << _parsers[id]->url;
+      std::cerr <<  id << " reponse parsed: " << _parsers[id]->url << std::endl;
       // std::cout << "body length: " << response.body().length();
       if (response.status() == 200 && _parsers[id]->interested &&
           AllowCache(
