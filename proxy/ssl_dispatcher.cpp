@@ -1,5 +1,6 @@
 #include "channel.hpp"
 #include "message.h"
+#include "log.h"
 
 Channel TCP_to_SSL("tcp_to_ssl");
 Channel SSL_to_TCP("ssl_to_tcp");
@@ -18,24 +19,14 @@ int main(int argc, char *argv[]) {
                0) {
           ;
         }
-#ifdef DEBUG
-        std::clog << "ID[" << pi.id << "] "
-                  << "Forward packet to server "
-                  << "Size[" << pi.size << "]" << std::endl;
-// PINF("[%d] forward to server: [%lu]", pi.id, t);
-#endif
+        log("Forward packet to server ", pi.id, pi.size);
       } else if (pi.side == client) {
         while (up_client.put_data(
                    (void *)&pi, pi.size + offsetof(struct TLSPacket, buffer)) <=
                0) {
           ;
         }
-#ifdef DEBUG
-        std::clog << "ID[" << pi.id << "] "
-                  << "Forward packet to client "
-                  << "Size[" << pi.size << "]" << std::endl;
-// PINF("[%d] forward to server: [%lu]", pi.id, t);
-#endif
+        log("Forward packet to client ", pi.id, pi.size);
         // up_client->print_headers();
       } else if (pi.side == close_client) {
         pi.size = -1;
@@ -43,12 +34,7 @@ int main(int argc, char *argv[]) {
                                   offsetof(struct TLSPacket, buffer)) <= 0) {
           ;
         }
-#ifdef DEBUG
-        std::clog << "ID[" << pi.id << "] "
-                  << "Forward close to client " << std::endl;
-// PINF("[%d] forward to server: [%lu]", pi.id, t);
-#endif
-        // PINF("[%d] forward close to client:", pi.id);
+        // log(pi.id, "Forward close to client.");
         // up_client->print_headers();
       } else if (pi.side == close_server) {
         pi.size = -1;
@@ -57,12 +43,7 @@ int main(int argc, char *argv[]) {
                                   offsetof(struct TLSPacket, buffer)) <= 0) {
           ;
         }
-#ifdef DEBUG
-        std::clog << "ID[" << pi.id << "] "
-                  << "Forward close to server " << std::endl;
-// PINF("[%d] forward to server: [%lu]", pi.id, t);
-#endif
-        // PINF("[%d] forward close to server", pi.id);
+        // log(pi.id, "Forward close to server.");
         // up_client->print_headers();
       }
     }
@@ -78,12 +59,8 @@ int main(int argc, char *argv[]) {
                  &pi, pi.size + offsetof(struct TLSPacket, buffer)) <= 0) {
         ;
       }
-#ifdef DEBUG
-      std::clog << "ID[" << pi.id << "] "
-                << "Forward server to TCP "
-                << "Size[" << pi.size << "]" << std::endl;
-// PINF("[%d] forward to server: [%lu]", pi.id, t);
-#endif
+      log("Forward server to TCP ", pi.id, pi.size);
+      // PINF("[%d] forward to server: [%lu]", pi.id, t);
     }
     if (down_client.pull_data(&pi, 35000) > 0) {
       if (pi.size > 0) {
@@ -96,12 +73,8 @@ int main(int argc, char *argv[]) {
                  &pi, pi.size + offsetof(struct TLSPacket, buffer)) <= 0) {
         ;
       }
-#ifdef DEBUG
-      std::clog << "ID[" << pi.id << "] "
-                << "Forward client to TCP "
-                << "Size[" << pi.size << "]" << std::endl;
-// PINF("[%d] forward to server: [%lu]", pi.id, t);
-#endif
+      log("Forward server to TCP ", pi.id, pi.size);
+      // PINF("[%d] forward to server: [%lu]", pi.id, t);
     }
   }
   return 0;

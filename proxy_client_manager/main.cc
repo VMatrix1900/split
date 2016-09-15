@@ -21,6 +21,9 @@ int main() {
 #ifndef IN_LINUX
   Timer::Connection timer;
   timer.msleep(45 * 1000);
+#else
+  // FILE *logfile = fopen("/home/vincent/Downloads/split/build/pc.log", "a");
+  // set_logoutput(logfile);
 #endif
 #ifdef MEASURE_TIME
   volatile unsigned int t1 = 0, t2 = 0, overhead = 0;
@@ -56,7 +59,7 @@ int main() {
       ProxyClient *pc = pcs[pkt->id];
       // up.print_headers();
       if (pkt->size < 0) {
-        log_receive(pkt->id, "close", "LB");
+        // log_receive(pkt->id, "close", "LB");
         pc->sendCloseAlertToOther();
       } else {
         log_receive(pkt->id, "packet", "LB", pkt->size);
@@ -120,7 +123,7 @@ int main() {
         log_receive(msg->id, "packet", "MB", msg->size);
         pc->receiveRecord(msg->id, msg->buffer, msg->size);
       } else if (tp == CLOSE) {
-        log_receive(msg->id, "close", "MB");
+        // log_receive(msg->id, "close", "MB");
         pc->receiveCloseAlert(msg->id);
       } else {
         fprintf(stderr, "wrong type\n");

@@ -12,6 +12,7 @@ class ProxyClient : public ProxyBase {
   unsigned long end_handshake;
 #endif
 
+  std::vector<struct Plaintext*> msg_buf;
   void sendCrt();
   std::string sendHTTP1Request(int packet_id, const char *buf, size_t len);
   ssize_t parseHTTP2Response(const uint8_t *in, size_t len);
@@ -35,7 +36,6 @@ class ProxyClient : public ProxyBase {
   void receiveSNI(char *SNIbuffer);
   void receiveCloseAlert(int pkt_id);
   void forwardRecordForHTTP2();
-  using ProxyBase::receiveRecord;
   void receiveRecord(int id, const char *recordbuffer, int length);
   void processResponse(int id);
   void submit_client_connection_setting();

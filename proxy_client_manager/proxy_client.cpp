@@ -5,7 +5,8 @@
 static ssize_t send_callback(nghttp2_session *session, const uint8_t *data,
                              size_t length, int flags, void *user_data) {
   ProxyClient *stream = (ProxyClient *)user_data;
-  stream->receiveRecord((const char *)data, (int)length);
+  stream->sendDownRecord((const char *)data, (int)length);
+  log("record send down", length);
   // TODO assume the length is equal to the sent
   return length;
 }
@@ -45,7 +46,8 @@ static int on_header_callback(nghttp2_session *session _U_,
 static int on_frame_recv_callback(nghttp2_session *session _U_,
                                   const nghttp2_frame *frame, void *user_data) {
   ProxyClient *stream = (ProxyClient *)user_data;
-  // log(stream->stream_id_to_stream[frame->hd.stream_id]->pkt_id, "receive frame");
+  // log(stream->stream_id_to_stream[frame->hd.stream_id]->pkt_id, "receive
+  // frame");
   print_frame(PRINT_RECV, frame);
   switch (frame->hd.type) {
     case NGHTTP2_HEADERS:
@@ -69,10 +71,10 @@ static int on_frame_recv_callback(nghttp2_session *session _U_,
       nghttp2_session_send(session);
       break;
     case NGHTTP2_GOAWAY:
-      std::clog << "GOAWAY frame" << std::endl;
+      log("GOAWAY frame");
       break;
     default:
-      std::cout << "Others" << std::endl;
+      log("Others frame");
       break;
   }
   return 0;
@@ -333,10 +335,20 @@ void ProxyClient::forwardRecordForHTTP2() {
 
 void ProxyClient::receiveRecord(int pkt_id, const char *recordbuffer,
                                 int length) {
+  if (!handshake_done) {
+    log(pkt_id, "buffer the content");
+    struct Plaintext *tmp =
+      (struct Plaintext *)malloc(sizeof(struct Plaintext));
+    tmp->id = pkt_id;
+    tmp->size = length;
+    memcpy(tmp->buffer, recordbuffer, length);
+    first_msg_buf.push_back(tmp);
+    return;
+  }
   if (http2_selected) {
-    std::string frame = sendHTTP1Request(pkt_id, recordbuffer, length);
+      std::string frame = sendHTTP1Request(pkt_id, recordbuffer, length);
   } else {
-    receiveRecord(recordbuffer, length);
+    sendDownRecord(recordbuffer, length);
   }
 }
 
@@ -372,10 +384,12 @@ void ProxyClient::receivePacket(const char *packetbuffer, int length) {
       //        SSL_get_cipher(ssl));
       handshake_done = true;
       if (!first_msg_buf.empty()) {
-        // TODO receive record fake id
-        std::clog << "first msg buffer is not empty" << std::endl;
-        // exit(-10);
-        ProxyBase::receiveRecord(first_msg_buf.c_str(), first_msg_buf.length());
+        for (std::vector<struct Plaintext *>::iterator it = first_msg_buf.begin();
+             it != first_msg_buf.end(); it++) {
+          receiveRecord((*it)->id, (*it)->buffer, (*it)->size);
+          free(*it);
+        }
+        first_msg_buf.clear();
       }
 #ifdef MEASURE_TIME
       end_handshake = Genode::Trace::timestamp();
@@ -477,6 +491,7 @@ void ProxyClient::submit_client_request(int pkt_id) {
   } else {
     log(pkt_id, "http request submitted.");
     log(stream_id, "http request submitted.");
+    log(id, "http request submitted.");
     stream_id_to_stream[stream_id] = pkt_id_to_stream[pkt_id];
   }
 }

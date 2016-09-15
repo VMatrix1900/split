@@ -15,16 +15,13 @@
 #include "message.h"
 #include "channel.hpp"
 #include "proxy_tcp.h"
+#include "log.h"
 
 Channel TCP_to_SSL("tcp_to_ssl");
 Channel SSL_to_TCP("ssl_to_tcp");
 
 struct timeval usec = {0, 1};
 struct timeval msec = {0, 600};
-
-namespace {
-void log(std::string txt) { std::clog << txt << std::endl; }
-}
 
 int timecount = 0;
 int nat_netfilter_lookup(struct sockaddr *dst_addr, socklen_t *dst_addrlen,
@@ -67,18 +64,18 @@ void copydata(evutil_socket_t fd, short what, void *ptr) {
     conn = ctx->conns[pi.id];
     // send to client side or server side.
     if (pi.side == server && conn->serv_state != CLOSED) {
-      printf("Get server [%d] %d from Genode\n", pi.id, pi.size);
+      log("Get server frome Genode", pi.id, pi.size);
       bev = conn->serv_bev;
     } else if (pi.side == client && conn->cli_state != CLOSED) {
       bev = conn->cli_bev;
-      printf("Get client [%d] %d from Genode\n", pi.id, pi.size);
+      log("Get client frome Genode", pi.id, pi.size);
     } else if (pi.side == close_server && conn->serv_state != CLOSED) {
-      printf("[%d]: clean server\n", pi.id);
+      // log(pi.id, "clean server");
       conn->serv_state = TO_CLOSE;
       /* event_add(ctx->cleantimer, &msec); */
       continue;
     } else if (pi.side == close_client && conn->cli_state != CLOSED) {
-      printf("[%d]: clean client\n", pi.id);
+      // log(pi.id, "clean client");
       conn->cli_state = TO_CLOSE;
       /* event_add(ctx->cleantimer, &msec); */
       continue;
@@ -114,9 +111,7 @@ void sendCloseToGenode(int id, enum packet_type side) {
   }
   std::string sidetxt =
       (side == close_client) ? "close_client" : "close_server";
-  std::clog << "ID[" << pi.id << "] "
-            << "Forward " << sidetxt << " to SSL."
-            << "Size[" << pi.size << "]" << std::endl;
+  // log("Forward" + sidetxt + " to SSL", pi.id, pi.size);
 }
 
 void readcb(struct bufferevent *bev, void *ptr, enum packet_type side) {
@@ -137,9 +132,7 @@ void readcb(struct bufferevent *bev, void *ptr, enum packet_type side) {
       ;
     }
     std::string sidetxt = (side == server) ? "server" : "client";
-    // std::clog << "ID[" << pi.id << "] "
-    //           << "Forward " << sidetxt << " to SSL."
-    //           << "Size[" << pi.size << "]" << std::endl;
+    log("Forward" + sidetxt + " to SSL", pi.id, pi.size);
   } else {
   }
 }
@@ -158,31 +151,30 @@ void writecb(struct bufferevent *bev, void *ptr) {
   struct pxy_conn *ctx = (struct pxy_conn *)ptr;
   if (ctx->serv_state == TO_CLOSE &&
       evbuffer_get_length(bufferevent_get_output(ctx->serv_bev)) == 0) {
-    printf("%d free server", ctx->index);
+    log(ctx->index, "free server");
     bufferevent_free(ctx->serv_bev);
     ctx->serv_bev = NULL;
     ctx->serv_state = CLOSED;
   }
   if (ctx->cli_state == TO_CLOSE &&
       evbuffer_get_length(bufferevent_get_output(ctx->cli_bev)) == 0) {
-    printf("%d free client", ctx->index);
+    log(ctx->index, "free client");
     bufferevent_free(ctx->cli_bev);
     ctx->cli_bev = NULL;
     ctx->cli_state = CLOSED;
   }
-  printf("packet sent to network layer\n");
 }
 
 void eventcb(struct bufferevent *bev, short events, void *ptr) {
   struct pxy_conn *ctx = (struct pxy_conn *)ptr;
   if (events & BEV_EVENT_CONNECTED) {
-    printf("client socket %d: connected\n", ctx->index);
+    log(ctx->index, "client socket connected");
   } else if (events & BEV_EVENT_ERROR) {
     /* An error occured while connecting. */
     /* ctx->closed = 1; */
   } else if (events & BEV_EVENT_EOF) {
     if (bev == ctx->cli_bev) {
-      printf("client socket %d: disconnected\n", ctx->index);
+      log(ctx->index, "client socket disconnected");
       if (ctx->cli_state != CLOSED) {
         bufferevent_free(ctx->cli_bev);
         ctx->cli_bev = NULL;
@@ -191,7 +183,7 @@ void eventcb(struct bufferevent *bev, short events, void *ptr) {
       sendCloseToGenode(ctx->index, close_client);
       /* event_add(ctx->parent->cleantimer, &msec); */
     } else {
-      printf("server socket %d: disconnected\n", ctx->index);
+      log(ctx->index, "server socket disconnected");
       if (ctx->serv_state != CLOSED) {
         bufferevent_free(ctx->serv_bev);
         ctx->serv_bev = NULL;

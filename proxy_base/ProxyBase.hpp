@@ -2,6 +2,7 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <string>
+#include <vector>
 #include <iostream>
 #include "message.h"
 #include "proxy_ssl.h"
@@ -22,7 +23,7 @@ class ProxyBase {
   Channel *to_mb;
   struct TLSPacket *pkt;
   struct Plaintext *msg;
-  std::string first_msg_buf;
+  std::vector<Plaintext*> first_msg_buf;
 #ifdef MEASURE_TIME
   volatile unsigned int t1, t2, overhead, t3, t4;
   int i, j;
@@ -115,8 +116,6 @@ class ProxyBase {
     }
 #endif
     sendRecord(buf, size);
-    // sendRecord(buf, size >> 1);
-    // sendRecord(buf + (size >> 1), size - (size >> 1));
   }
 
   void sendMessage(enum TextType type, char *msgbuffer, int length) {
@@ -207,11 +206,20 @@ class ProxyBase {
     sendCloseAlertDown();
   }
 
-  void receiveRecord(const char *recordbuffer, int length) {
+  void receiveRecord(int pkt_id, const char *recordbuffer, int length) {
     if (!handshake_done) {
-      first_msg_buf += std::string(recordbuffer, length);
+      struct Plaintext *tmp =
+        (struct Plaintext *)malloc(sizeof(struct Plaintext));
+      tmp->id = pkt_id;
+      tmp->size = length;
+      memcpy(tmp->buffer, recordbuffer, length);
+      first_msg_buf.push_back(tmp);
       return;
     }
+    sendDownRecord(recordbuffer, length);
+  }
+
+  void sendDownRecord(const char *recordbuffer, int length) {
 #ifdef MEASURE_TIME
     t1 = Genode::Trace::timestamp();
 #endif
@@ -227,27 +235,26 @@ class ProxyBase {
     // }
     if (r <= 0) {
       switch (SSL_get_error(ssl, r)) {
-        case SSL_ERROR_WANT_READ:
-          // TODO handle rehandshake;
-          printf("write fail: want read");
-          break;
-        case SSL_ERROR_ZERO_RETURN:
-          printf("write fail:ssl closed");
-          sendCloseAlertDown();
-          return;
-        case SSL_ERROR_WANT_WRITE:
-          // TODO will this happen? we have unlimited bio memory buffer
-          perror("BIO memory buffer full");
-          exit(-1);
-        default:
-          exit(-2);
+      case SSL_ERROR_WANT_READ:
+        // TODO handle rehandshake;
+        printf("write fail: want read");
+        break;
+      case SSL_ERROR_ZERO_RETURN:
+        printf("write fail:ssl closed");
+        sendCloseAlertDown();
+        return;
+      case SSL_ERROR_WANT_WRITE:
+        // TODO will this happen? we have unlimited bio memory buffer
+        perror("BIO memory buffer full");
+        exit(-1);
+      default:
+        exit(-2);
       }
     } else {
-      // we need to send down the msg;
-      // printf("begin send packet\n");
       sendPacket();
     }
   }
+
   ProxyBase(struct cert_ctx *ctx, int id, Channel *down, Channel *otherside,
             Channel *to_mb, struct TLSPacket *pkt, struct Plaintext *msg)
       : handshake_done(false),
@@ -261,8 +268,7 @@ class ProxyBase {
         otherside(otherside),
         to_mb(to_mb),
         pkt(pkt),
-        msg(msg),
-        first_msg_buf("") {
+        msg(msg) {
 #ifdef MEASURE_TIME
     t1 = 0;
     t2 = 0;

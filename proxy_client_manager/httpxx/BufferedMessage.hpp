@@ -33,7 +33,6 @@ namespace http {
         static int on_body
             ( ::http_parser * parser, const char * data, size_t size )
         {
-          std::clog << "append request body size " << size << std::endl;
             static_cast<Self*>(parser->data)->myBody.append(data, size);
             return (0);
         }

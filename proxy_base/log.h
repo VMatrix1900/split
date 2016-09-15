@@ -4,49 +4,64 @@
 #include <string>
 
 namespace {
-  void log(std::string name, int id, int size)
-  {
-#ifdef DEBUG
-    printf("ID[%d] %s Size: %d\n", id, name.c_str(), size);
-    /* std::clog << "ID[" << id << "] " << name << " Size: " << size << std::endl; */
-#endif
-  }
+FILE *logoutfile = stdout;
 
-  void log(std::string txt)
-  {
-#ifdef DEBUG
-    /* std::clog << txt << std::endl; */
-    printf("%s\n", txt.c_str());
-#endif
-  }
+void set_logoutput(FILE *file) { logoutfile = file; }
 
-  void log(int id, std::string txt)
-  {
-#ifdef DEBUG
-    /* std::clog << "ID[" << id << "]" << txt << std::endl; */
-    printf("ID[%d] %s\n", id, txt.c_str());
-#endif
-  }
+void logtime() {
+  time_t tm;
+  time(&tm);
+  struct tm *now = localtime(&tm);
+  std::clog << now->tm_min << "min" << now->tm_sec << "s" << std::endl;
+}
 
-  void log(std::string name, size_t size)
-  {
+void log(std::string name, int id, int size) {
 #ifdef DEBUG
-    /* std::clog << name << " Size: " << size << std::endl; */
-    printf("%s Size: %zu\n", name.c_str(), size);
+  /* fprintf(logoutfile, "ID[%d] %s Size: %d\n", id, name.c_str(), size); */
+  logtime();
+  std::clog << "ID[" << id << "] " << name << " Size: " << size << std::endl;
 #endif
-  }
+}
 
-  void log_receive(int id, const char *packet, const char *from)
-  {
+void log(std::string txt) {
 #ifdef DEBUG
-    printf("ID[%d] receive %s from %s\n", id, packet, from);
+ logtime();
+  std::clog << txt << std::endl;
+/* fprintf(logoutfile, "%s\n", txt.c_str()); */
 #endif
-  }
+}
 
-  void log_receive(int id, const char *packet, const char *from, int size)
-  {
+void log(int id, std::string txt) {
 #ifdef DEBUG
-    printf("ID[%d] receive %s from %s. Size[%d]\n", id, packet, from, size);
+  logtime();
+  std::clog << "ID[" << id << "]" << txt << std::endl;
+/* fprintf(logoutfile, "ID[%d] %s\n", id, txt.c_str()); */
 #endif
-  }
+}
+
+void log(std::string name, size_t size) {
+#ifdef DEBUG
+  logtime();
+  std::clog << name << " Size: " << size << std::endl;
+/* fprintf(logoutfile, "%s Size: %zu\n", name.c_str(), size); */
+#endif
+}
+
+void log_receive(int id, const char *packet, const char *from) {
+#ifdef DEBUG
+  logtime();
+  /* fprintf(logoutfile, "ID[%d] receive %s from %s\n", id, packet, from); */
+  printf("ID[%d] receive %s from %s\n", id, packet, from);
+#endif
+}
+
+void log_receive(int id, const char *packet, const char *from, int size) {
+#ifdef DEBUG
+  /* fprintf(logoutfile, "ID[%d] receive %s from %s. Size[%d]\n", id, packet,
+   * from, */
+  /*         size); */
+  logtime();
+  printf("ID[%d] receive %s from %s. Size[%d]\n", id, packet, from, size);
+#endif
+}
 }

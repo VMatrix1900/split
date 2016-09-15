@@ -58,7 +58,12 @@ void ProxyServer::receivePacket(const char *packetbuffer, int length) {
       // fprintf(stderr, "[%d] Server handshake done!\n", id);
       handshake_done = true;
       if (!first_msg_buf.empty()) {
-        receiveRecord(first_msg_buf.c_str(), first_msg_buf.length());
+        for (std::vector<struct Plaintext *>::iterator it = first_msg_buf.begin();
+             it != first_msg_buf.end(); it++) {
+          receiveRecord((*it)->id, (*it)->buffer, (*it)->size);
+          free(*it);
+        }
+        first_msg_buf.clear();
       }
       // printf("[%d]::end[%lu]\n", id, Genode::Trace::timestamp() / 1000000);
     }

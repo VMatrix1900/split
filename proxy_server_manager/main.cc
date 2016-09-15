@@ -18,6 +18,9 @@ int main() {
   Timer::Connection timer;
   timer.msleep(35 * 1000);
   PDBG("hello server");
+#else
+  // FILE *logfile = fopen("/home/vincent/Downloads/split/build/ps.log", "a");
+  // set_logoutput(logfile);
 #endif
   if (ssl_init() < 0) {
     printf("init wrong");
@@ -48,7 +51,7 @@ int main() {
     if (up.pull_data((void *)pkt, sizeof(struct TLSPacket)) > 0) {
       ProxyServer *ps = pss[pkt->id];
       if (pkt->size < 0) {
-        log_receive(pkt->id, "close", "LB");
+        // log_receive(pkt->id, "close", "LB");
         ps->sendCloseAlertToOther();
       } else {
         log_receive(pkt->id, "packet", "LB", pkt->size);
@@ -73,9 +76,9 @@ int main() {
       ProxyServer *ps = pss[msg->id];
       if (tp == HTTP) {
         log_receive(msg->id, "message", "MB", msg->size);
-        ps->receiveRecord(msg->buffer, msg->size);
+        ps->receiveRecord(msg->id, msg->buffer, msg->size);
       } else if (tp == CLOSE) {
-        log_receive(msg->id, "close", "MB");
+        // log_receive(msg->id, "close", "MB");
         ps->receiveCloseAlert();
       } else {
         fprintf(stderr, "wrong type\n");

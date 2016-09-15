@@ -50,8 +50,8 @@ void Secure_box::Web_cache::SendRecord(std::string text, enum packet_type side,
     }
     length -= msg->size;
     buf += msg->size;
-    printf("[%d] send record [%d] to %s\n", id, msg->size,
-           (side == client) ? "client" : "server");
+    std::string sidetxt = (side == client) ? "client" : "server";
+    log("send record to " + sidetxt, id, msg->size);
   }
   free(msg);
 }
@@ -88,17 +88,14 @@ void Secure_box::Web_cache::ParseHTTPRequest(int id, const char *buf,
 
     // Check that we've parsed an entire request.
     if (!request.complete()) {  // which means size == 0
-      // std::cerr << "Request still needs data." << std::endl;
     } else {  // size > 0 add the logic of detect url
       if (request.method_name() == "GET") {
         _parsers[id]->url = request.header("HOST") + request.url();
-        std::cerr << id << " : " << _parsers[id]->url << std::endl;
+        log(id, _parsers[id]->url);
         std::string cached = _resourcecache.GetResource(_parsers[id]->url);
         if (cached != "") {
-          // printf("[%d] web cache hit, length is %d", id, cached.length());
           SendRecord(cached, server, id);
         } else {
-          // printf("[%d] web cache miss", id);
           _parsers[id]->interested = true;
           http::RequestBuilder rebuild_request(request);
           SendRecord(rebuild_request.to_string() + request.body(), client, id);
@@ -149,17 +146,16 @@ void Secure_box::Web_cache::ParseHTTPResponse(int id, const char *buf,
     int time = 900;
     // Check that we've parsed an entire response.
     if (!response.complete()) {  // which means size == 0
-      std::cerr << id <<  " Response still needs data." << std::endl;
+      log(id, "Response still needs data.");
     } else {  // size > 0 check cache control policy
-      std::cerr <<  id << " reponse parsed: " << _parsers[id]->url << std::endl;
-      // std::cout << "body length: " << response.body().length();
+      log(id, "Response parsed");
+      log(_parsers[id]->url);
       if (response.status() == 200 && _parsers[id]->interested &&
           AllowCache(
               response.header("Cache-Control"))) {  // ok get the resource
         // std::cerr << "Begin cache";
         http::ResponseBuilder rebuild_response(response);
         if (response.has_header("Transfer-Encoding")) {
-          // std::cout << "chunked:";
           http::Message::Headers &headers = rebuild_response.headers();
           headers.erase("Transfer-Encoding");
           headers.insert(std::make_pair("Content-Length",

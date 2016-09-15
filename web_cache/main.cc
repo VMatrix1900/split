@@ -14,6 +14,9 @@ int main() {
 #ifndef IN_LINUX
   Timer::Connection timer;
   timer.msleep(35 * 1000);
+#else
+  // FILE *logfile = fopen("/home/vincent/Downloads/split/build/cache.log", "a");
+  // set_logoutput(logfile);
 #endif
 
   struct Plaintext *server_msg =
