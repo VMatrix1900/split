@@ -115,7 +115,7 @@ bool color_output = false;
 void set_color_output(bool f) { color_output = f; }
 
 namespace {
-FILE *outfile = stdout;
+FILE *outfile = stderr;
 }  // namespace
 
 void set_output(FILE *file) { outfile = file; }

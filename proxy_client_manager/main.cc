@@ -91,7 +91,7 @@ int main() {
              it != pcs.end(); it++) {
           pc = it->second;
           if (pc->http2_selected && pc->domain == domainname) {
-            log("found an existing TLS connection." + domainname);
+            log(pc->id, "found an existing TLS connection." + domainname);
             reuse = true;
             break;
           }

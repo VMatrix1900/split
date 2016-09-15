@@ -25,7 +25,7 @@ void log(std::string name, int id, int size) {
 
 void log(std::string txt) {
 #ifdef DEBUG
- logtime();
+  logtime();
   std::clog << txt << std::endl;
 /* fprintf(logoutfile, "%s\n", txt.c_str()); */
 #endif
@@ -50,8 +50,10 @@ void log(std::string name, size_t size) {
 void log_receive(int id, const char *packet, const char *from) {
 #ifdef DEBUG
   logtime();
-  /* fprintf(logoutfile, "ID[%d] receive %s from %s\n", id, packet, from); */
-  printf("ID[%d] receive %s from %s\n", id, packet, from);
+  std::clog << "ID[" << id << "] receive " << std::string(packet) << " from "
+            << std::string(from) << std::endl;
+/* fprintf(logoutfile, "ID[%d] receive %s from %s\n", id, packet, from); */
+/* printf("ID[%d] receive %s from %s\n", id, packet, from); */
 #endif
 }
 
@@ -61,7 +63,9 @@ void log_receive(int id, const char *packet, const char *from, int size) {
    * from, */
   /*         size); */
   logtime();
-  printf("ID[%d] receive %s from %s. Size[%d]\n", id, packet, from, size);
+  std::clog << "ID[" << id << "] receive " << std::string(packet) << " from "
+            << std::string(from) << ". Size[" << size << "]" << std::endl;
+/* printf("ID[%d] receive %s from %s. Size[%d]\n", id, packet, from, size); */
 #endif
 }
 }

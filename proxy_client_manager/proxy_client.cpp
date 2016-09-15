@@ -48,6 +48,7 @@ static int on_frame_recv_callback(nghttp2_session *session _U_,
   ProxyClient *stream = (ProxyClient *)user_data;
   // log(stream->stream_id_to_stream[frame->hd.stream_id]->pkt_id, "receive
   // frame");
+  log(stream->id, "Receive a full frame");
   print_frame(PRINT_RECV, frame);
   switch (frame->hd.type) {
     case NGHTTP2_HEADERS:
@@ -68,7 +69,6 @@ static int on_frame_recv_callback(nghttp2_session *session _U_,
       }
       break;
     case NGHTTP2_PING:
-      nghttp2_session_send(session);
       break;
     case NGHTTP2_GOAWAY:
       log("GOAWAY frame");
@@ -77,12 +77,13 @@ static int on_frame_recv_callback(nghttp2_session *session _U_,
       log("Others frame");
       break;
   }
+  nghttp2_session_send(session);
   return 0;
 }
 
 static int on_frame_send_callback(nghttp2_session *session,
                                   const nghttp2_frame *frame, void *user_data) {
-  // print_frame(PRINT_SEND, frame);
+  print_frame(PRINT_SEND, frame);
   return 0;
 }
 
@@ -437,6 +438,13 @@ void ProxyClient::submit_client_connection_setting() {
   rv = nghttp2_submit_settings(session, NGHTTP2_FLAG_NONE, iv, ARRLEN(iv));
   if (rv != 0) {
     std::cerr << "Could not submit SETTINGS: " << nghttp2_strerror(rv);
+  } else {
+    // std::cout << "Settings submitted." << std::endl;
+  }
+
+  rv = nghttp2_session_set_local_window_size(session, NGHTTP2_FLAG_NONE, 0, (2 << 26) - 1);
+  if (rv != 0) {
+    std::cerr << "Could not submit window update: " << nghttp2_strerror(rv);
   } else {
     // std::cout << "Settings submitted." << std::endl;
   }

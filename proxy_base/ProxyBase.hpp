@@ -13,7 +13,6 @@ class ProxyBase {
  protected:
   bool handshake_done;
   bool closed;
-  int id;
   SSL *ssl;
   BIO *in_bio;
   BIO *out_bio;
@@ -193,6 +192,7 @@ class ProxyBase {
   }
 
  public:
+  int id;
   bool handshakedone() { return handshake_done; }
 
   void sendCloseAlertToOther() { sendMessage(CLOSE, NULL, -1); }
@@ -259,7 +259,6 @@ class ProxyBase {
             Channel *to_mb, struct TLSPacket *pkt, struct Plaintext *msg)
       : handshake_done(false),
         closed(false),
-        id(id),
         ssl(NULL),
         in_bio(NULL),
         out_bio(NULL),
@@ -268,7 +267,8 @@ class ProxyBase {
         otherside(otherside),
         to_mb(to_mb),
         pkt(pkt),
-        msg(msg) {
+        msg(msg),
+        id(id){
 #ifdef MEASURE_TIME
     t1 = 0;
     t2 = 0;
