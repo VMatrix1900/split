@@ -9,10 +9,12 @@ FILE *logoutfile = stdout;
 void set_logoutput(FILE *file) { logoutfile = file; }
 
 void logtime() {
+#ifdef DEBUG
   time_t tm;
   time(&tm);
   struct tm *now = localtime(&tm);
   std::clog << now->tm_min << "min" << now->tm_sec << "s" << std::endl;
+#endif
 }
 
 void log(std::string name, int id, int size) {

@@ -49,7 +49,7 @@ static int on_frame_recv_callback(nghttp2_session *session _U_,
   // log(stream->stream_id_to_stream[frame->hd.stream_id]->pkt_id, "receive
   // frame");
   log(stream->id, "Receive a full frame");
-  print_frame(PRINT_RECV, frame);
+  // print_frame(PRINT_RECV, frame);
   switch (frame->hd.type) {
     case NGHTTP2_HEADERS:
       if (frame->hd.flags & NGHTTP2_FLAG_END_STREAM) {
@@ -83,7 +83,7 @@ static int on_frame_recv_callback(nghttp2_session *session _U_,
 
 static int on_frame_send_callback(nghttp2_session *session,
                                   const nghttp2_frame *frame, void *user_data) {
-  print_frame(PRINT_SEND, frame);
+  // print_frame(PRINT_SEND, frame);
   return 0;
 }
 
