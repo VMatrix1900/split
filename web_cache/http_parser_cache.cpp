@@ -32,7 +32,7 @@ void Secure_box::Web_cache::Delete_parser(int id) {
   }
 }
 
-void Secure_box::Web_cache::SendRecord(std::string text, enum packet_type side,
+void Secure_box::Web_cache::SendRecord(std::string text, enum packet_side_type side,
                                        int id) {
   struct Plaintext *msg = (struct Plaintext *)malloc(sizeof(struct Plaintext));
   int length = text.length();
@@ -56,7 +56,7 @@ void Secure_box::Web_cache::SendRecord(std::string text, enum packet_type side,
   free(msg);
 }
 
-void Secure_box::Web_cache::SendCloseAlert(enum packet_type side, int id) {
+void Secure_box::Web_cache::SendCloseAlert(enum packet_side_type side, int id) {
   struct Plaintext *msg = (struct Plaintext *)malloc(sizeof(struct Plaintext));
   Channel *dst = (side == client) ? to_client : to_server;
   msg->type = CLOSE;
@@ -69,10 +69,11 @@ void Secure_box::Web_cache::SendCloseAlert(enum packet_type side, int id) {
   free(msg);
 }
 
-void Secure_box::Web_cache::ParseHTTPRequest(int id, const char *buf,
+std::string Secure_box::Web_cache::ParseHTTPRequest(int id, const char *buf,
                                              int size) {
   http::BufferedRequest &request = _parsers[id]->request;
   char *data = (char *)buf;
+  std::string result;
   while (size > 0) {
     // Parse as much data as possible.
     while ((size > 0) && !request.complete()) {
@@ -89,26 +90,19 @@ void Secure_box::Web_cache::ParseHTTPRequest(int id, const char *buf,
     // Check that we've parsed an entire request.
     if (!request.complete()) {  // which means size == 0
     } else {  // size > 0 add the logic of detect url
-      if (request.method_name() == "GET") {
+      if (request.method_name() == "POST") {
         _parsers[id]->url = request.header("HOST") + request.url();
         log(id, _parsers[id]->url);
-        std::string cached = _resourcecache.GetResource(_parsers[id]->url);
-        if (cached != "") {
-          SendRecord(cached, server, id);
-        } else {
-          _parsers[id]->interested = true;
-          http::RequestBuilder rebuild_request(request);
-          SendRecord(rebuild_request.to_string() + request.body(), client, id);
-        }
+        http::RequestBuilder rebuild_request(request);
+        result = request.body();
       } else {
         // other request, just forward it.
-        http::RequestBuilder rebuild_request(request);
-        SendRecord(rebuild_request.to_string() + request.body(), client, id);
       }
       // Prepare to receive another request.
       request.clear();
     }
   }
+  return result;
 }
 
 bool Secure_box::Web_cache::AllowCache(std::string policy) {

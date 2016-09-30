@@ -12,7 +12,7 @@ namespace Secure_box
 {
 class HTTPStreamParser;
 class Web_cache;
-enum packet_type { client, server };
+enum packet_side_type { client, server };
 }
 
 class Secure_box::HTTPStreamParser
@@ -49,11 +49,11 @@ class Secure_box::Web_cache
 
   void Delete_parser(int id);
 
-  void SendRecord(std::string msg, enum packet_type side, int id);
+  void SendRecord(std::string msg, enum packet_side_type side, int id);
 
-  void SendCloseAlert(enum packet_type side, int id);
+  void SendCloseAlert(enum packet_side_type side, int id);
 
-  void ParseHTTPRequest(int id, const char *buf, int size);
+  std::string ParseHTTPRequest(int id, const char *buf, int size);
 
   void ParseHTTPResponse(int id, const char *buf, int size);
 

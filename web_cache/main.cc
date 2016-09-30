@@ -33,30 +33,33 @@ int main() {
 #endif
   while (true) {
     bool newdata = false;
-    if (client_to_mb.pull_data((void *)client_msg, sizeof(struct Plaintext)) >
-        0) {
-      newdata = true;
-      cache_mb->GetParser(client_msg->id);
-      if (client_msg->type == CLOSE) {
-        // log_receive(client_msg->id, "close", "PC");
-        cache_mb->SendCloseAlert(Secure_box::server, client_msg->id);
-      } else {
-        log_receive(client_msg->id, "message", "PC", client_msg->size);
-        cache_mb->ParseHTTPResponse(client_msg->id, client_msg->buffer,
-                                    client_msg->size);
-      }
-    }
     if (server_to_mb.pull_data((void *)server_msg, sizeof(struct Plaintext)) >
         0) {
       newdata = true;
       cache_mb->GetParser(server_msg->id);
       if (server_msg->type == CLOSE) {
         // log_receive(server_msg->id, "close", "PS");
-        cache_mb->SendCloseAlert(Secure_box::client, server_msg->id);
+        // cache_mb->SendCloseAlert(Secure_box::client, server_msg->id);
       } else {
         // log_receive(server_msg->id, "message", "PS", server_msg->size);
-        cache_mb->ParseHTTPRequest(server_msg->id, server_msg->buffer,
-                                   server_msg->size);
+        std::string content = cache_mb->ParseHTTPRequest(server_msg->id, server_msg->buffer,
+                                                         server_msg->size);
+        if (!content.empty()) {
+          log("Get body: " + content);
+          char len[25];
+          sprintf(len, "%d", content.length());
+
+          std::string headerline;
+          headerline += "HTTP/1.1 200 OK";
+          // headerline += "\r\n" ;headerline += "Content-length: ";
+          // headerline += std::string(len);
+          headerline += "\r\nContent-Type: text/html; charset=utf-8 \r\n";
+          headerline += "Date: Tue, 20 Sep 2016 12:09:59 GMT\r\n";
+          headerline += "Server: Cowboy\r\n \r\n";
+          log (headerline);
+          cache_mb->SendRecord(headerline + content + "\r\n\r\n", Secure_box::server, server_msg->id);
+          cache_mb->SendCloseAlert(Secure_box::server, server_msg->id);
+        }
       }
     }
 #ifndef IN_LINUX
